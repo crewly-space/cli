@@ -1,0 +1,78 @@
+name: Release
+
+# Publishes the CLI release the installers download: one archive per platform
+# holding the self-contained opencrew binary, plus the checksums.txt both
+# installers verify against.
+#
+#   git tag v0.1.0 && git push origin v0.1.0
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to publish (must already exist)"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+
+      - uses: oven-sh/setup-bun@v2
+        with: { bun-version: "1.4.0" }
+      - uses: actions/setup-node@v4
+        with: { node-version: "24" }
+
+      - name: Install
+        run: bun install
+
+      # Vendored protocol must match its owner before anything ships.
+      - name: Check vendored code and tests
+        run: |
+          git clone --depth 1 https://github.com/opentribe-dev/opencrew-server.git ../opencrew-server
+          npm run vendor:check
+          bun test
+
+      - name: Cross-compile the CLI
+        run: bun run scripts/build.ts
+
+      - name: Package every platform
+        run: |
+          set -eu
+          for pair in linux_amd64 linux_arm64 darwin_amd64 darwin_arm64 windows_amd64; do
+            os=${pair%_*}
+            arch=${pair#*_}
+            binary=dist/opencrew_${pair}/opencrew
+            [ "$os" = "windows" ] && binary="${binary}.exe"
+            sh scripts/package-release.sh "$os" "$arch" "$binary"
+          done
+          sh scripts/checksums.sh
+          ls -la dist
+
+      # A release whose checksums do not match its archives bricks every
+      # install, and the installer failure would not say why.
+      - name: Verify the checksums we are about to publish
+        working-directory: dist
+        run: |
+          sha256sum --check --strict --ignore-missing checksums.txt
+          echo "checksums verified"
+
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.inputs.tag || github.ref_name }}
+        run: |
+          gh release create "$TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "OpenCrew CLI $TAG" \
+            --generate-notes \
+            --verify-tag \
+            dist/opencrew-cli_* \
+            dist/checksums.txt
