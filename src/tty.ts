@@ -44,7 +44,7 @@ class StdinReader {
   }
 }
 
-const stdin = new StdinReader();
+export const stdin = new StdinReader();
 
 export async function readLine(prompt = ""): Promise<string> {
   if (prompt) process.stdout.write(prompt);

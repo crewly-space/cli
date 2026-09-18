@@ -8,6 +8,7 @@ import * as localProvider from "./provider/commands.ts";
 import * as server from "./server.ts";
 import * as service from "./service/index.ts";
 import * as state from "./state.ts";
+import { select } from "./select.ts";
 import { readLine, readLineDefault, readSecret } from "./tty.ts";
 
 type Mode = "server" | "server-app" | "connect";
@@ -73,15 +74,11 @@ export async function init(args: string[], entrypoint = import.meta.path): Promi
 }
 
 async function chooseMode(): Promise<Mode> {
-  console.log("\nWhat do you want to run here?");
-  console.log("  1. Server + app (recommended)");
-  console.log("  2. Server only (headless API)");
-  console.log("  3. Connect this device to an existing server");
-  const answer = await readLine("Choose [1]: ");
-  if (answer === "" || answer === "1") return "server-app";
-  if (answer === "2") return "server";
-  if (answer === "3") return "connect";
-  throw new Error("choose 1, 2, or 3");
+  return await select<Mode>("\nWhat do you want to run here?", [
+    { value: "server-app", label: "Server + app", hint: "(recommended)" },
+    { value: "server", label: "Server only", hint: "(headless API)" },
+    { value: "connect", label: "Connect this device to an existing server" },
+  ]);
 }
 
 async function configureConnection(config: state.Config, options: Options, entrypoint: string): Promise<void> {
@@ -212,14 +209,14 @@ async function configureProvider(config: state.Config, token: string, options: O
 
 async function chooseProvider(): Promise<string> {
   for (;;) {
-    console.log("\nHow should agents access AI models?");
-    console.log("  1. OpenCrew model subscription (coming with hosted gateway)");
-    console.log("  2. Link an OpenCrew account (coming with hosted gateway)");
-    console.log("  3. Bring your own API key");
-    console.log("  4. Use a detected local provider");
-    console.log("  5. Configure later");
-    const answer = await readLine("Choose [5]: ");
-    if (answer === "" || answer === "5") return "later";
+    const answer = await select("\nHow should agents access AI models?", [
+      { value: "1", label: "OpenCrew model subscription", hint: "(coming with hosted gateway)" },
+      { value: "2", label: "Link an OpenCrew account", hint: "(coming with hosted gateway)" },
+      { value: "3", label: "Bring your own API key" },
+      { value: "4", label: "Use a detected local provider" },
+      { value: "5", label: "Configure later" },
+    ], 4);
+    if (answer === "5") return "later";
     if (answer === "1" || answer === "2") {
       console.log("That option is not live yet. Choose your own key or configure later.");
       continue;
@@ -230,20 +227,21 @@ async function chooseProvider(): Promise<string> {
       if (await localProvider.ollamaAvailable()) available.push({ kind: "ollama", label: "Ollama" });
       if (available.length === 1) return available[0]!.kind;
       if (available.length > 1) {
-        console.log(available.map((provider, index) => `  ${index + 1}. ${provider.label}`).join("\n"));
-        const selected = Number.parseInt(await readLine("Local provider [1]: ") || "1", 10);
-        if (selected >= 1 && selected <= available.length) return available[selected - 1]!.kind;
-        throw new Error(`choose a local provider from 1 to ${available.length}`);
+        return await select(
+          "\nWhich local provider?",
+          available.map((provider) => ({ value: provider.kind, label: provider.label })),
+        );
       }
       console.log("No authenticated local provider was detected. Run claude login or configure later.");
       continue;
     }
-    if (answer !== "3") throw new Error("choose 1, 2, 3, 4, or 5");
-    console.log("\n  1. Anthropic\n  2. OpenAI\n  3. OpenRouter\n  4. DeepSeek\n  5. OpenAI-compatible");
-    const choice = await readLine("Provider [1]: ");
-    const kind = ({ "": "anthropic", "1": "anthropic", "2": "openai", "3": "openrouter", "4": "deepseek", "5": "openai-compatible" } as Record<string, string>)[choice];
-    if (!kind) throw new Error("choose a provider from 1 to 5");
-    return kind;
+    return await select("\nWhich provider?", [
+      { value: "anthropic", label: "Anthropic" },
+      { value: "openai", label: "OpenAI" },
+      { value: "openrouter", label: "OpenRouter" },
+      { value: "deepseek", label: "DeepSeek" },
+      { value: "openai-compatible", label: "OpenAI-compatible" },
+    ]);
   }
 }
 

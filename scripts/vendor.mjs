@@ -22,6 +22,12 @@ const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const manifest = JSON.parse(readFileSync(resolve(repoRoot, "package.json"), "utf8")).vendor ?? [];
 const check = process.argv.includes("--check");
 
+/*
+ * Tests belong to the owning repository and are run there. Copying them would
+ * drag that repo's test runner into every consumer's typecheck.
+ */
+const isVendorable = (file) => !/\.test\.[cm]?tsx?$/.test(file);
+
 const walk = (dir) =>
   existsSync(dir)
     ? readdirSync(dir).flatMap((entry) => {
@@ -32,7 +38,7 @@ const walk = (dir) =>
 
 const digest = (dir) => {
   const hash = createHash("sha256");
-  for (const file of walk(dir).sort()) {
+  for (const file of walk(dir).filter(isVendorable).sort()) {
     hash.update(file.slice(dir.length).split(sep).join("/"));
     hash.update(readFileSync(file));
   }
@@ -61,7 +67,7 @@ for (const { owner, from, to } of manifest) {
 
   rmSync(target, { recursive: true, force: true });
   mkdirSync(dirname(target), { recursive: true });
-  cpSync(source, target, { recursive: true });
+  cpSync(source, target, { recursive: true, filter: (from) => statSync(from).isDirectory() || isVendorable(from) });
   console.log(`vendor: refreshed ${to} from ${owner}`);
 }
 

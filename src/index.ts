@@ -7,6 +7,7 @@ import { init } from "./onboarding.ts";
 import { pairDevice } from "./pairing.ts";
 import { isWindows } from "./paths.ts";
 import * as provider from "./provider/commands.ts";
+import * as runtimeInstall from "./runtime-install.ts";
 import * as service from "./service/index.ts";
 import * as server from "./server.ts";
 import * as state from "./state.ts";
@@ -76,6 +77,8 @@ async function run(args: string[]): Promise<void> {
       return workspace.command(rest);
     case "agentd":
       return agentdCommand(rest);
+    case "runtime":
+      return runtimeCommand(rest);
     case "_serve":
       return daemon.serve();
     case "version":
@@ -114,6 +117,10 @@ async function dashboard(): Promise<void> {
 }
 
 async function connect(args: string[]): Promise<void> {
+  // Without this an unknown flag is taken as the server URL, and the failure
+  // shows up as "server URL must be a valid http or https address".
+  const flag = args.find((arg) => arg.startsWith("-"));
+  if (flag) throw new Error(`unknown option "${flag}"; usage: opencrew connect [server-url]`);
   if (args.length > 1) throw new Error("usage: opencrew connect [server-url]");
   const config = await state.load();
   if (args[0]) config.serverUrl = args[0].replace(/\/+$/, "");
@@ -242,6 +249,19 @@ async function doctor(): Promise<void> {
   console.log("\nEverything required is ready.");
 }
 
+async function runtimeCommand(args: string[]): Promise<void> {
+  const [action, target] = args;
+  switch (action) {
+    case undefined:
+    case "list":
+      return runtimeInstall.list();
+    case "install":
+      return target ? await runtimeInstall.install(target) : await runtimeInstall.installInteractive();
+    default:
+      throw new Error(`unknown runtime command "${action}"; usage: opencrew runtime list|install [name]`);
+  }
+}
+
 async function agentdCommand(args: string[]): Promise<void> {
   const [action] = args;
   if (!action) throw new Error("usage: opencrew agentd install|status");
@@ -312,6 +332,7 @@ Providers and workspaces:
   opencrew provider add|list|test
   opencrew workspace add [path]|list
   opencrew agentd install|status
+  opencrew runtime list|install [claude-code|codex]
 
 Run 'opencrew init' to get started.`);
 }
