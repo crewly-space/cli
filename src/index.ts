@@ -139,7 +139,13 @@ async function connect(args: string[]): Promise<void> {
   config.deviceId = deviceIdentity.deviceId;
   config.paired = false;
   await state.save(config);
-  if (await pairDevice(config, deviceIdentity)) await daemon.start(import.meta.path);
+  if (!(await pairDevice(config, deviceIdentity))) return;
+  // A daemon left over from a previous pairing keeps talking to the old server:
+  // daemon.start() sees a live process and returns, so the new server never
+  // gets a connection and reports the device as offline with no capabilities.
+  const { running } = await daemon.running(state.dir());
+  if (running) await daemon.stop();
+  await daemon.start(import.meta.path);
 }
 
 async function setup(): Promise<void> {
