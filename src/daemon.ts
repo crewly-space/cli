@@ -8,12 +8,13 @@ import { isNotFound, writePrivate } from "./fsx.ts";
 import * as identity from "./identity.ts";
 import { isWindows } from "./paths.ts";
 import * as state from "./state.ts";
+import { dim, green } from "./ui.ts";
 
 export async function start(entrypoint: string): Promise<void> {
   const dir = await state.ensureDir();
   const existing = await running(dir);
   if (existing.running) {
-    console.log(`agentd is already running (pid ${existing.pid})`);
+    console.log(`${green("agentd is already running")} (pid ${existing.pid})`);
     return;
   }
   const config = await state.load();
@@ -31,7 +32,7 @@ export async function start(entrypoint: string): Promise<void> {
     if (child.pid === undefined) throw new Error("could not start agentd");
     await writePrivate(join(dir, "agentd.pid"), String(child.pid));
     child.unref();
-    console.log(`agentd started (pid ${child.pid})`);
+    console.log(`${green("agentd started")} (pid ${child.pid})`);
   } finally {
     closeSync(logFd);
   }
@@ -44,7 +45,7 @@ export async function stop(): Promise<void> {
     raw = await readFile(path, "utf8");
   } catch (error) {
     if (isNotFound(error)) {
-      console.log("agentd is not running");
+      console.log(dim("agentd is not running"));
       return;
     }
     throw error;
@@ -60,7 +61,7 @@ export async function stop(): Promise<void> {
   }
   await unlink(path).catch(() => {});
   if (failure) throw new Error(`stop agentd: ${failure.message}`);
-  console.log("agentd stopped");
+  console.log(green("agentd stopped"));
 }
 
 export async function serve(): Promise<void> {
@@ -195,7 +196,7 @@ export async function logs(args: string[]): Promise<void> {
     raw = await readFile(path, "utf8");
   } catch (error) {
     if (isNotFound(error)) {
-      console.log("No logs yet.");
+      console.log(dim("No logs yet."));
       return;
     }
     throw error;
@@ -203,7 +204,7 @@ export async function logs(args: string[]): Promise<void> {
   let lines = raw.replace(/[\r\n]+$/, "").split("\n");
   if (args.length === 0 && lines.length > 200) {
     lines = lines.slice(-200);
-    console.log("Showing the latest 200 lines. Use 'crewly logs --all' for everything.\n");
+    console.log(dim("Showing the latest 200 lines. Use 'crewly logs --all' for everything.\n"));
   }
   console.log(lines.join("\n"));
 }

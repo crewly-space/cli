@@ -1,5 +1,6 @@
 import * as state from "./state.ts";
 import { readLine } from "./tty.ts";
+import { dim, green } from "./ui.ts";
 import * as workspace from "./workspace.ts";
 
 export async function command(args: string[]): Promise<void> {
@@ -9,12 +10,12 @@ export async function command(args: string[]): Promise<void> {
   switch (action) {
     case "list":
       if (config.workspaces.length === 0) {
-        console.log("No workspaces yet. Add one with: crewly workspace add");
+        console.log(`No workspaces yet. ${dim("Add one with: crewly workspace add")}`);
         return;
       }
       for (const entry of config.workspaces) {
-        console.log(`${entry.name.padEnd(20)} ${entry.path}`);
-        console.log("  read allow · write ask · shell ask · git push deny");
+        console.log(`  ${green("•")} ${entry.name.padEnd(20)} ${dim(entry.path)}`);
+        console.log(`  ${dim("read allow · write ask · shell ask · git push deny")}`);
       }
       return;
     case "add": {
@@ -25,8 +26,8 @@ export async function command(args: string[]): Promise<void> {
       }
       config.workspaces.push(entry);
       await state.save(config);
-      console.log(`✓ Added ${entry.path}`);
-      console.log("  read allow · write ask · shell ask · git push deny");
+      console.log(`${green("✓")} Added ${entry.path}`);
+      console.log(`  ${dim("read allow · write ask · shell ask · git push deny")}`);
       return;
     }
     default:

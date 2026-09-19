@@ -2,6 +2,7 @@ import * as detect from "./detect.ts";
 import type { Identity } from "./identity.ts";
 import * as server from "./server.ts";
 import * as state from "./state.ts";
+import { bold, cyan, dim, Spinner, yellow } from "./ui.ts";
 
 interface PairingCreated {
   pairingId: string;
@@ -33,8 +34,8 @@ export async function pairDevice(
     }),
   });
 
-  console.log(`\nPair this device with code ${created.userCode}`);
-  console.log(`Open ${created.verificationUrl}`);
+  console.log(`\n${dim("Pair this device with code")} ${bold(created.userCode)}`);
+  console.log(`${dim("Open")} ${cyan(created.verificationUrl)}`);
 
   if (options.approvalToken) {
     await request(config.serverUrl, `/api/v1/devices/pairings/code/${encodeURIComponent(created.userCode)}/approve`, {
@@ -46,12 +47,13 @@ export async function pairDevice(
   }
 
   if (options.waitForApproval === false) {
-    console.log("Complete approval in the app, then run 'crewly connect' again.");
+    console.log(`${yellow("!")} Complete approval in the app, then run 'crewly connect' again.`);
     return false;
   }
 
   const deadline = new Date(created.expiresAt).getTime();
-  process.stdout.write(options.approvalToken ? "Approving device" : "Waiting for approval in the app");
+  const spinner = new Spinner(options.approvalToken ? "Approving device" : "Waiting for approval in the app");
+  spinner.start();
   while (Date.now() < deadline) {
     const claim = await request<{ status: "pending" | "approved"; deviceId?: string }>(
       config.serverUrl,
@@ -59,16 +61,18 @@ export async function pairDevice(
       { method: "POST", body: JSON.stringify({ pollToken: created.pollToken }) },
     );
     if (claim.status === "approved") {
-      if (claim.deviceId !== identity.deviceId) throw new Error("server approved a different device identity");
+      if (claim.deviceId !== identity.deviceId) {
+        spinner.stop();
+        throw new Error("server approved a different device identity");
+      }
       config.paired = true;
       await state.save(config);
-      console.log("\n✓ Device paired securely");
+      spinner.succeed("Device paired securely");
       return true;
     }
-    process.stdout.write(".");
     await Bun.sleep(options.pollIntervalMs ?? 2_000);
   }
-  console.log();
+  spinner.stop();
   throw new Error("pairing code expired; run 'crewly connect' to try again");
 }
 

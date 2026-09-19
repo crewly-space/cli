@@ -2,7 +2,9 @@ import { randomBytes } from "node:crypto";
 import * as detect from "../detect.ts";
 import { Store } from "../secrets.ts";
 import * as state from "../state.ts";
-import { readLine, readLineDefault, readSecret } from "../tty.ts";
+import { select } from "../select.ts";
+import { readLineDefault, readSecret } from "../tty.ts";
+import { dim, green, mark, Spinner } from "../ui.ts";
 
 const OPTIONS = [
   { kind: "claude-subscription", label: "Claude Subscription", local: true },
@@ -22,11 +24,11 @@ export async function command(args: string[]): Promise<void> {
   switch (action) {
     case "list":
       if (config.providers.length === 0) {
-        console.log("No providers configured. Run: crewly provider add");
+        console.log(`No providers configured. ${dim("Run: crewly provider add")}`);
         return;
       }
       for (const provider of config.providers) {
-        console.log(`${provider.label.padEnd(24)} ${provider.kind}${provider.localOnly ? " · local" : ""}`);
+        console.log(`  ${green("•")} ${provider.label.padEnd(24)} ${dim(provider.kind)}${provider.localOnly ? ` ${dim("· local")}` : ""}`);
       }
       return;
     case "add":
@@ -63,14 +65,11 @@ export function create(kind: string, label: string, extra: Partial<state.Provide
 }
 
 async function add(config: state.Config): Promise<void> {
-  console.log("\nAdd a provider\n────────────────");
-  OPTIONS.forEach((option, index) => console.log(`  ${index + 1}. ${option.label}`));
-  const raw = await readLine(`Choose [1-${OPTIONS.length}]: `);
-  const selected = Number.parseInt(raw, 10);
-  if (!Number.isInteger(selected) || selected < 1 || selected > OPTIONS.length) {
-    throw new Error("invalid provider choice");
-  }
-  const option = OPTIONS[selected - 1] as (typeof OPTIONS)[number];
+  const option = await select("\nAdd a provider", OPTIONS.map((entry) => ({
+    value: entry,
+    label: entry.label,
+    hint: entry.local ? "on this device" : "API key",
+  })));
 
   if (option.kind === "claude-subscription") {
     if (!claudeSubscriptionAvailable()) {
@@ -78,7 +77,7 @@ async function add(config: state.Config): Promise<void> {
     }
     config.providers.push(create(option.kind, option.label, { localOnly: true }));
     await state.save(config);
-    console.log("✓ Claude Subscription enabled. No API key was requested.");
+    console.log(`${green("✓")} Claude Subscription enabled. No API key was requested.`);
     return;
   }
   if (option.kind === "ollama") {
@@ -110,7 +109,7 @@ async function add(config: state.Config): Promise<void> {
     }),
   );
   await state.save(config);
-  console.log("✓ Credential encrypted locally");
+  console.log(`${green("✓")} Credential encrypted locally`);
   return test(config);
 }
 
@@ -118,6 +117,8 @@ async function test(config: state.Config): Promise<void> {
   if (config.providers.length === 0) throw new Error("no providers configured");
   let failed = false;
   for (const provider of config.providers) {
+    const spinner = new Spinner(`Testing ${provider.label}`);
+    spinner.start();
     let ok = true;
     let detail = "configuration available";
     if (provider.kind === "claude-subscription") {
@@ -138,7 +139,8 @@ async function test(config: state.Config): Promise<void> {
         detail = "encrypted credential unavailable";
       }
     }
-    console.log(`${mark(ok)} ${provider.label.padEnd(24)} ${detail}`);
+    spinner.stop();
+    console.log(`  ${mark(ok)} ${provider.label.padEnd(24)} ${dim(detail)}`);
     failed ||= !ok;
   }
   if (failed) throw new Error("one or more providers could not be reached");
@@ -199,8 +201,4 @@ async function health(url: string): Promise<boolean> {
 
 function newId(prefix: string): string {
   return `${prefix}_${randomBytes(8).toString("hex")}`;
-}
-
-function mark(ok: boolean): string {
-  return ok ? "✓" : "·";
 }

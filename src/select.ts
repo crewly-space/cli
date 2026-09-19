@@ -1,4 +1,5 @@
 import { readLine, stdin } from "./tty.ts";
+import { dim } from "./ui.ts";
 
 export interface SelectOption<T> {
   value: T;
@@ -36,10 +37,11 @@ export async function select<T>(
 }
 
 function renderRow<T>(option: SelectOption<T>, index: number, active: boolean): string {
-  const marker = active ? ">" : " ";
-  const hint = option.hint ? `  ${option.hint}` : "";
+  const marker = active ? "›" : " ";
+  // The active row uses inverse video, so keep its hint plain to avoid a reset
+  // code cutting the highlight short. Inactive hints are dimmed for hierarchy.
+  const hint = option.hint ? `  ${active ? option.hint : dim(option.hint)}` : "";
   const row = `  ${marker} ${index + 1}. ${option.label}${hint}`;
-  // Inverse video rather than a colour keeps this legible on light and dark terminals.
   return active ? `${ESC}[7m${row}${ESC}[0m` : row;
 }
 
@@ -51,13 +53,15 @@ async function selectInteractive<T>(
   let active = defaultIndex;
   process.stdout.write(`${title}\n`);
 
+  const footer = dim("  ↑/↓ move · Enter choose · q quit");
   const draw = (): void => {
     for (const [index, option] of options.entries()) {
       process.stdout.write(`${renderRow(option, index, index === active)}\n`);
     }
+    process.stdout.write(`${footer}\n`);
   };
   const clear = (): void => {
-    process.stdout.write(`${ESC}[${options.length}A${ESC}[0J`);
+    process.stdout.write(`${ESC}[${options.length + 1}A${ESC}[0J`);
   };
 
   draw();
@@ -66,11 +70,14 @@ async function selectInteractive<T>(
     for (;;) {
       const byte = await stdin.readByte();
       if (byte === null) break;
-      if (byte === 0x03) {
+      if (byte === 0x03 || byte === 0x71) {
         process.stdout.write("\n");
         process.exit(130);
       }
-      if (byte === 0x0d || byte === 0x0a) break;
+      if (byte === 0x0d || byte === 0x0a) {
+        clear();
+        break;
+      }
 
       let next = active;
       if (byte === 0x1b) {
@@ -109,7 +116,7 @@ async function selectNumbered<T>(
 ): Promise<T> {
   process.stdout.write(`${title}\n`);
   for (const [index, option] of options.entries()) {
-    const hint = option.hint ? `  ${option.hint}` : "";
+    const hint = option.hint ? `  ${dim(option.hint)}` : "";
     process.stdout.write(`  ${index + 1}. ${option.label}${hint}\n`);
   }
   for (;;) {

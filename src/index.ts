@@ -11,7 +11,8 @@ import * as runtimeInstall from "./runtime-install.ts";
 import * as service from "./service/index.ts";
 import * as server from "./server.ts";
 import * as state from "./state.ts";
-import { close as closeStdin, readLine, readLineDefault } from "./tty.ts";
+import { close as closeStdin, readLine } from "./tty.ts";
+import { bold, brand, cyan, dim, green, heading, mark, red, row, stateMark, yellow, type RuntimeState } from "./ui.ts";
 import * as workspace from "./workspace-command.ts";
 
 const VERSION = "0.1.0-dev";
@@ -25,7 +26,8 @@ async function main(): Promise<void> {
     closeStdin();
   } catch (error) {
     if (!(error instanceof AlreadyReported)) {
-      console.error("Error:", error instanceof Error ? error.message : error);
+      console.error(`${red("Error:")} ${error instanceof Error ? error.message : error}`);
+      console.error(dim("Run 'crewly help' for usage, or 'crewly doctor' to check your setup."));
     }
     process.exit(1);
   }
@@ -84,7 +86,7 @@ async function run(args: string[]): Promise<void> {
     case "version":
     case "--version":
     case "-v":
-      console.log("crewly", VERSION);
+      console.log(brand("crewly"), VERSION);
       return;
     case "help":
     case "--help":
@@ -98,22 +100,23 @@ async function run(args: string[]): Promise<void> {
 async function dashboard(): Promise<void> {
   const config = await state.load();
   process.stdout.write("\x1b[2J\x1b[H");
-  console.log("  Crewly");
-  console.log("  Your agents, on your terms.\n");
+  console.log(`  ${brand("Crewly")}`);
+  console.log(`  ${dim("Your agents, on your terms.")}\n`);
   if (config.installMode === "unconfigured") {
-    console.log("  Setup is ready. Press Enter to begin, or q to quit.");
+    console.log(`  ${cyan("Press Enter")} ${dim("to begin, or q to quit.")}`);
     const choice = await readLine("");
     if (choice.toLowerCase() === "q") return;
     return init([]);
   }
-  console.log(`  Device     ${config.deviceName}`);
-  console.log(`  Pairing    ${config.paired ? "Connected" : "Not paired"}`);
-  console.log(`  Providers  ${config.providers.length}`);
-  console.log(`  Workspaces ${config.workspaces.length}\n`);
+  row("Device", config.deviceName);
+  row("Pairing", config.paired ? green("Connected") : yellow("Not paired"));
+  row("Providers", String(config.providers.length));
+  row("Workspaces", String(config.workspaces.length));
+  console.log();
   for (const runtime of detect.all()) {
-    console.log(`  ${runtime.name.padEnd(20)} ${runtime.detail}`);
+    console.log(`  ${stateMark(runtimeState(runtime))} ${runtime.name.padEnd(20)} ${dim(runtime.detail)}`);
   }
-  console.log("\n  init · up · status · provider · workspace · doctor · logs");
+  console.log(`\n  ${dim("init · up · status · provider · workspace · doctor · logs")}`);
 }
 
 async function connect(args: string[]): Promise<void> {
@@ -148,64 +151,21 @@ async function connect(args: string[]): Promise<void> {
   await daemon.start(import.meta.path);
 }
 
-async function setup(): Promise<void> {
-  const dir = await state.ensureDir();
-  const config = await state.load();
-  const id = await identity.loadOrCreate(dir);
-  config.deviceId = id.deviceId;
-
-  console.log("\nCrewly setup\n──────────────");
-  const name = (await readLineDefault("Device name", config.deviceName)).trim();
-  const server = (await readLineDefault("Crewly URL", config.serverUrl)).trim().replace(/\/+$/, "");
-  if (name === "") throw new Error("device name cannot be empty");
-  let parsed: URL;
-  try {
-    parsed = new URL(server);
-  } catch {
-    throw new Error("Crewly URL must be a valid http or https address");
-  }
-  if ((parsed.protocol !== "http:" && parsed.protocol !== "https:") || parsed.host === "") {
-    throw new Error("Crewly URL must be a valid http or https address");
-  }
-  config.deviceName = name;
-  config.serverUrl = server;
-
-  console.log("\nLocal runtimes");
-  for (const runtime of detect.all()) {
-    const ready = runtime.installed && (!runtime.provider || runtime.authenticated);
-    console.log(`  ${mark(ready)}  ${runtime.name} — ${runtime.detail}`);
-  }
-  if (provider.claudeSubscriptionAvailable() && !provider.has(config, "claude-subscription")) {
-    const answer = await readLine("\nUse your detected Claude subscription? [Y/n] ");
-    if (answer === "" || answer.toLowerCase() === "y") {
-      config.providers.push(
-        provider.create("claude-subscription", "Claude Subscription", { localOnly: true }),
-      );
-    }
-  }
-  await state.save(config);
-  console.log(`\n✓ Device identity created: ${config.deviceId}`);
-  console.log("✓ Credentials and runtime access stay on this device");
-  if (config.providers.length === 0) console.log("\nNext: crewly provider add");
-  else if (config.workspaces.length === 0) console.log("\nNext: crewly workspace add");
-  else console.log("\nReady: crewly agentd install");
-}
-
 async function status(): Promise<void> {
   const config = await state.load();
   const { running, pid } = await daemon.running(state.dir());
   const serverState = await server.running();
-  console.log(`Crewly ${VERSION} (${detect.platform()})`);
-  console.log(`Mode: ${config.installMode}`);
-  console.log(`Server: ${serverState.running ? `running (pid ${serverState.pid})` : "stopped"} · ${config.serverUrl}`);
-  console.log(`Agentd: ${running ? `running (pid ${pid})` : "stopped"}`);
-  console.log(`Device: ${config.deviceId ? `${config.deviceName} · ${config.deviceId}` : "not set up"}`);
-  console.log(`Paired: ${config.paired}`);
+  console.log(`${brand("Crewly")} ${VERSION} ${dim(`(${detect.platform()})`)}`);
+  row("Mode", config.installMode);
+  row("Server", `${serverState.running ? green(`running (pid ${serverState.pid})`) : dim("stopped")} · ${config.serverUrl}`);
+  row("Agentd", running ? green(`running (pid ${pid})`) : dim("stopped"));
+  row("Device", config.deviceId ? `${config.deviceName} · ${dim(config.deviceId)}` : yellow("not set up"));
+  row("Paired", config.paired ? green("yes") : yellow("no"));
   // Device providers are the ones agentd brokers locally. Providers configured
   // on the server need an owner session to read, which the CLI does not hold,
   // so labelling this plainly beats printing a count that looks like the server's.
-  console.log(`Device providers: ${config.providers.length}`);
-  console.log(`Workspaces: ${config.workspaces.length}`);
+  row("Device providers", String(config.providers.length));
+  row("Workspaces", String(config.workspaces.length));
 }
 
 async function doctor(): Promise<void> {
@@ -238,21 +198,21 @@ async function doctor(): Promise<void> {
       detail: config?.serverUrl || "Not configured",
     },
   ];
-  console.log("Crewly doctor\n");
+  heading("Crewly doctor");
   let failed = false;
   for (const check of checks) {
-    console.log(`${mark(check.ok)} ${check.name.padEnd(22)} ${check.detail}`);
+    console.log(`  ${mark(check.ok)} ${check.name.padEnd(22)} ${dim(check.detail)}`);
     failed ||= !check.ok;
   }
-  console.log("\nOptional runtimes");
+  console.log(dim("\nOptional runtimes"));
   for (const runtime of detect.all()) {
-    console.log(`${mark(runtime.installed)} ${runtime.name.padEnd(22)} ${runtime.detail}`);
+    console.log(`  ${stateMark(runtimeState(runtime))} ${runtime.name.padEnd(22)} ${dim(runtime.detail)}`);
   }
   if (failed) {
-    console.log("\nNext: run 'crewly setup' to repair required configuration.");
+    console.log(`\n${dim("Next:")} run 'crewly setup' to repair required configuration.`);
     throw new AlreadyReported();
   }
-  console.log("\nEverything required is ready.");
+  console.log(`\n${green("Everything required is ready.")}`);
 }
 
 async function runtimeCommand(args: string[]): Promise<void> {
@@ -276,7 +236,7 @@ async function agentdCommand(args: string[]): Promise<void> {
       return status();
     case "install":
       await service.installCurrent(import.meta.path);
-      console.log("✓ agentd installed and started for this user");
+      console.log(`${green("✓")} agentd installed and started for this user`);
       return;
     default:
       throw new Error(`unknown agentd command "${action}"`);
@@ -294,7 +254,7 @@ async function serverCommand(args: string[]): Promise<void> {
       return server.restart();
     case "status": {
       const current = await server.running();
-      console.log(current.running ? `Crewly server is running (pid ${current.pid})` : "Crewly server is stopped");
+      console.log(current.running ? green(`Crewly server is running (pid ${current.pid})`) : dim("Crewly server is stopped"));
       return;
     }
     case "logs":
@@ -306,41 +266,56 @@ async function serverCommand(args: string[]): Promise<void> {
 
 function update(): void {
   if (isWindows) {
-    console.log("Run this in PowerShell to update Crewly:\n\n  irm https://crewly.space/install.ps1 | iex");
+    console.log(`Run this in PowerShell to update Crewly:\n\n  ${cyan("irm https://crewly.space/install.ps1 | iex")}`);
   } else {
-    console.log("Run this command to update Crewly:\n\n  curl -fsSL https://crewly.space/install.sh | sh");
+    console.log(`Run this command to update Crewly:\n\n  ${cyan("curl -fsSL https://crewly.space/install.sh | sh")}`);
   }
 }
 
-function mark(ok: boolean): string {
-  return ok ? "✓" : "·";
+/** Installed is a pass, installed-but-unsigned-in warns, and missing is neutral. */
+function runtimeState(runtime: detect.Runtime): RuntimeState {
+  if (!runtime.installed) return "missing";
+  return runtime.authenticated ? "ok" : "warn";
 }
 
 function help(): void {
-  console.log(`Crewly — your local agent bridge
+  const cmd = (name: string, description: string): string =>
+    `  ${bold(name.padEnd(26))} ${dim(description)}`;
 
-Usage:
-  crewly                         Open the local dashboard
-  crewly init                    Choose server, app, and model access
-  crewly connect [server-url]    Pair this computer with a server
-  crewly up|down                 Start or stop the local server
-  crewly open                    Open the app in your browser
-  crewly status                  Show server, device, and provider state
-  crewly server start|stop|restart|status|logs
-  crewly start|stop|restart      Control the local device daemon
-  crewly doctor                  Check required setup and optional runtimes
-  crewly logs [--all]            Show recent daemon logs
-  crewly update                  Print the safe update command
-  crewly backup <file>           Back up configuration without API credentials
-  crewly restore <file>          Restore a configuration backup
+  console.log(brand("Crewly"));
+  console.log(dim("Your local agent bridge\n"));
+  console.log(bold("Usage"));
+  console.log(`  ${dim("crewly")} ${bold("<command>")} ${dim("[options]")}\n`);
 
-Providers and workspaces:
-  crewly provider add|list|test
-  crewly workspace add [path]|list
-  crewly agentd install|status
-  crewly runtime list|install [claude-code|codex]
+  console.log(bold("Get started"));
+  console.log(cmd("init", "Set up a server, app, and model access"));
+  console.log(cmd("connect [server-url]", "Pair this computer with a server"));
+  console.log(cmd("doctor", "Check setup and optional runtimes"));
+  console.log(cmd("status", "Show server, device, and provider state"));
+  console.log(cmd("up | down", "Start or stop the local server"));
+  console.log(cmd("open", "Open the app in your browser"));
+  console.log();
 
-Run 'crewly init' to get started.`);
+  console.log(bold("Control the daemon"));
+  console.log(cmd("start | stop | restart", "Manage the local device daemon"));
+  console.log(cmd("server <action>", "start, stop, restart, status, logs"));
+  console.log(cmd("logs [--all]", "Show recent daemon logs"));
+  console.log();
+
+  console.log(bold("Providers and workspaces"));
+  console.log(cmd("provider <action>", "add, list, test"));
+  console.log(cmd("workspace <action>", "add [path], list"));
+  console.log(cmd("agentd <action>", "install, status"));
+  console.log(cmd("runtime <action>", "list, install [claude-code | codex]"));
+  console.log();
+
+  console.log(bold("Manage"));
+  console.log(cmd("backup <file>", "Back up configuration without API credentials"));
+  console.log(cmd("restore <file>", "Restore a configuration backup"));
+  console.log(cmd("update", "Print the safe update command"));
+  console.log();
+
+  console.log(`${dim("Run")} ${bold("crewly init")} ${dim("to get started.")}`);
 }
 
 await main();

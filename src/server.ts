@@ -6,6 +6,7 @@ import { isNotFound, writePrivate } from "./fsx.ts";
 import { isWindows } from "./paths.ts";
 import { SERVER_BINARY, install, managedDir } from "./server-install.ts";
 import * as state from "./state.ts";
+import { dim, green, Spinner } from "./ui.ts";
 
 /** An override, else the release layout beside the CLI, else the copy the CLI downloaded itself. */
 export function binaryPath(): string {
@@ -34,12 +35,19 @@ export async function start(input?: state.Config): Promise<void> {
   }
   const current = await running();
   if (current.running) {
-    console.log(`Crewly server is already running (pid ${current.pid})`);
+    console.log(`${green("Crewly server is already running")} (pid ${current.pid})`);
     return;
   }
   if (needsDownload(config.installMode === "server-app")) {
-    console.log("Downloading the Crewly server...");
-    await install();
+    const download = new Spinner("Downloading the Crewly server");
+    download.start();
+    try {
+      await install();
+      download.succeed("Crewly server downloaded");
+    } catch (error) {
+      download.stop();
+      throw error;
+    }
   }
   const executable = binaryPath();
   if (!existsSync(executable)) {
@@ -69,8 +77,15 @@ export async function start(input?: state.Config): Promise<void> {
     if (child.pid === undefined) throw new Error("could not start Crewly server");
     await writePrivate(join(dir, "server.pid"), String(child.pid));
     child.unref();
-    await waitUntilReady(config.serverUrl, child.pid);
-    console.log(`Crewly server started (pid ${child.pid})`);
+    const ready = new Spinner("Starting the Crewly server");
+    ready.start();
+    try {
+      await waitUntilReady(config.serverUrl, child.pid);
+      ready.succeed(`Crewly server started (pid ${child.pid})`);
+    } catch (error) {
+      ready.stop();
+      throw error;
+    }
   } finally {
     closeSync(logFd);
   }
@@ -83,7 +98,7 @@ export async function stop(): Promise<void> {
     raw = await readFile(path, "utf8");
   } catch (error) {
     if (isNotFound(error)) {
-      console.log("Crewly server is not running");
+      console.log(dim("Crewly server is not running"));
       return;
     }
     throw error;
@@ -96,7 +111,7 @@ export async function stop(): Promise<void> {
     if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error;
   }
   await unlink(path).catch(() => {});
-  console.log("Crewly server stopped");
+  console.log(green("Crewly server stopped"));
 }
 
 export async function restart(): Promise<void> {
@@ -128,7 +143,7 @@ export async function logs(all = false): Promise<void> {
     raw = await readFile(path, "utf8");
   } catch (error) {
     if (isNotFound(error)) {
-      console.log("No server logs yet.");
+      console.log(dim("No server logs yet."));
       return;
     }
     throw error;

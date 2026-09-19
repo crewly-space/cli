@@ -1,5 +1,6 @@
 import * as detect from "./detect.ts";
 import { select } from "./select.ts";
+import { dim, green, stateMark, type RuntimeState } from "./ui.ts";
 
 /**
  * Installing the coding runtimes an agent can drive.
@@ -66,11 +67,11 @@ export async function install(id: string): Promise<void> {
   const target = find(id);
   const before = detect.look(target.binary);
   if (before) {
-    console.log(`✓ ${target.name} is already installed (${before})`);
+    console.log(`${green("✓")} ${target.name} is already installed (${before})`);
     return;
   }
 
-  console.log(`\nInstalling ${target.name} from ${target.package}`);
+  console.log(`\nInstalling ${target.name} from ${dim(target.package)}`);
   const code = await run([...npmCommand(), "install", "--global", target.package]);
   if (code !== 0) {
     throw new Error(
@@ -86,15 +87,15 @@ export async function install(id: string): Promise<void> {
         "  Open a new terminal, or add your npm global bin directory to PATH.",
     );
   }
-  console.log(`✓ ${target.name} installed (${after})`);
-  console.log(`  Run "${target.signIn}" once to sign in.`);
+  console.log(`${green("✓")} ${target.name} installed (${after})`);
+  console.log(`  ${dim(`Run "${target.signIn}" once to sign in.`)}`);
 }
 
 /** Interactive picker used by `crewly runtime install` with no argument. */
 export async function installInteractive(): Promise<void> {
   const missing = INSTALLABLE.filter((item) => !detect.look(item.binary));
   if (missing.length === 0) {
-    console.log("✓ Claude Code and Codex are both installed");
+    console.log(`${green("✓")} Claude Code and Codex are both installed`);
     return;
   }
   const options = [
@@ -110,13 +111,13 @@ export async function installInteractive(): Promise<void> {
 export function list(): void {
   console.log("\nCoding runtimes\n");
   for (const runtime of detect.all().filter((entry) => !entry.provider)) {
-    const mark = runtime.installed ? (runtime.authenticated ? "✓" : "·") : "×";
-    console.log(`  ${mark} ${runtime.name.padEnd(14)} ${runtime.detail}`);
+    const state: RuntimeState = !runtime.installed ? "missing" : runtime.authenticated ? "ok" : "warn";
+    console.log(`  ${stateMark(state)} ${runtime.name.padEnd(14)} ${dim(runtime.detail)}`);
   }
   const missing = INSTALLABLE.filter((item) => !detect.look(item.binary));
   console.log(
     missing.length > 0
-      ? `\nInstall with: crewly runtime install ${missing[0]!.id}`
-      : "\nBoth runtimes are installed.",
+      ? `\n${dim("Install with:")} crewly runtime install ${missing[0]!.id}`
+      : `\n${green("Both runtimes are installed.")}`,
   );
 }

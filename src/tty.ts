@@ -1,3 +1,5 @@
+import { dim } from "./ui.ts";
+
 /**
  * A single buffered reader over stdin. One shared instance matters: line reads and the
  * hidden-input read must not race for the same bytes.
@@ -52,7 +54,7 @@ export async function readLine(prompt = ""): Promise<string> {
 }
 
 export async function readLineDefault(label: string, value: string): Promise<string> {
-  const next = await readLine(`${label} [${value}]: `);
+  const next = await readLine(`${label} ${dim(`[${value}]`)}: `);
   return next === "" ? value : next;
 }
 

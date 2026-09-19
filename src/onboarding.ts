@@ -10,6 +10,7 @@ import * as service from "./service/index.ts";
 import * as state from "./state.ts";
 import { select } from "./select.ts";
 import { readLine, readLineDefault, readSecret } from "./tty.ts";
+import { green, heading, yellow } from "./ui.ts";
 
 type Mode = "server" | "server-app" | "connect";
 
@@ -33,7 +34,7 @@ const REMOTE_PROVIDERS = ["anthropic", "openai", "openrouter", "deepseek", "open
 export async function init(args: string[], entrypoint = import.meta.path): Promise<void> {
   const options = parseOptions(args);
   const config = await state.load();
-  console.log("\nCrewly setup\n──────────────");
+  heading("Crewly setup");
 
   const mode = options.mode ?? (options.yes ? "server-app" : await chooseMode());
   if (mode === "connect") return configureConnection(config, options, entrypoint);
@@ -49,8 +50,8 @@ export async function init(args: string[], entrypoint = import.meta.path): Promi
   config.serverUrl = options.url?.replace(/\/+$/, "") ?? `http://${formatHost(browserHost)}:${port}`;
   await state.save(config);
 
-  console.log(`\n✓ Mode: ${mode === "server-app" ? "server + web app" : "server only"}`);
-  console.log(`✓ Data: ${dataDir}`);
+  console.log(`\n${green("✓")} Mode: ${mode === "server-app" ? "server + web app" : "server only"}`);
+  console.log(`${green("✓")} Data: ${dataDir}`);
   await server.start(config);
 
   const token = await ensureOwner(config.serverUrl, dataDir, options);
@@ -66,10 +67,10 @@ export async function init(args: string[], entrypoint = import.meta.path): Promi
       noOpen: options.noOpen,
       waitForApproval: token !== null || !options.yes,
     });
-  if (alreadyPaired) console.log("✓ Device is already paired");
+  if (alreadyPaired) console.log(`${green("✓")} Device is already paired`);
   if (paired) await startDaemon(entrypoint);
 
-  console.log(`\n✓ Crewly is ready at ${config.serverUrl}`);
+  console.log(`\n${green("✓")} Crewly is ready at ${config.serverUrl}`);
   if (mode === "server-app" && !options.noOpen) await server.open(config);
 }
 
@@ -94,8 +95,8 @@ async function configureConnection(config: state.Config, options: Options, entry
   config.deviceName = options.name ?? hostname();
   config.paired = false;
   await state.save(config);
-  console.log(`\n✓ Device identity created: ${config.deviceId}`);
-  console.log(`✓ Server saved: ${config.serverUrl}`);
+  console.log(`\n${green("✓")} Device identity created: ${config.deviceId}`);
+  console.log(`${green("✓")} Server saved: ${config.serverUrl}`);
   const paired = await pairDevice(config, id, {
     noOpen: options.noOpen,
     waitForApproval: !options.yes,
@@ -110,9 +111,9 @@ async function startDaemon(entrypoint: string): Promise<void> {
   }
   try {
     await service.installCurrent(entrypoint);
-    console.log("✓ Device daemon installed and started");
+    console.log(`${green("✓")} Device daemon installed and started`);
   } catch (error) {
-    console.log(`· Could not register the login service: ${(error as Error).message}`);
+    console.log(`${yellow("!")} Could not register the login service: ${(error as Error).message}`);
     await daemon.start(entrypoint);
   }
 }
@@ -120,15 +121,15 @@ async function startDaemon(entrypoint: string): Promise<void> {
 async function ensureOwner(baseUrl: string, dataDir: string, options: Options): Promise<string | null> {
   const status = await request(baseUrl, "/api/v1/auth/status") as { initialized: boolean; claimRequired?: boolean };
   if (status.initialized) {
-    console.log("✓ Owner account already exists");
+    console.log(`${green("✓")} Owner account already exists`);
     return null;
   }
   if (options.yes && (!options.email || !process.env.CREWLY_ADMIN_PASSWORD)) {
-    console.log("· Create the first owner in the app, or set CREWLY_ADMIN_PASSWORD with --email for unattended setup.");
+    console.log(`${yellow("!")} Create the first owner in the app, or set CREWLY_ADMIN_PASSWORD with --email for unattended setup.`);
     return null;
   }
 
-  console.log("\nCreate the first owner account");
+  heading("Create the first owner account");
   const displayName = options.name ?? await readLineDefault("Display name", hostname());
   const email = options.email ?? await readLine("Email: ");
   const password = process.env.CREWLY_ADMIN_PASSWORD ?? await promptPassword();
@@ -144,7 +145,7 @@ async function ensureOwner(baseUrl: string, dataDir: string, options: Options): 
     method: "POST",
     body: JSON.stringify({ email, displayName, password, ...(claimToken ? { claimToken } : {}) }),
   }) as { token: string };
-  console.log("✓ Owner account created");
+  console.log(`${green("✓")} Owner account created`);
   return result.token;
 }
 
@@ -154,7 +155,7 @@ async function configureProvider(config: state.Config, token: string, options: O
   if (!kind && options.yes) kind = "later";
   if (!kind) kind = await chooseProvider();
   if (kind === "later") {
-    console.log("· Model provider skipped; add one from the app when ready.");
+    console.log(`${yellow("!")} Model provider skipped; add one from the app when ready.`);
     return;
   }
   if (kind === "crewly" || kind === "account") {
@@ -182,7 +183,7 @@ async function configureProvider(config: state.Config, token: string, options: O
       headers: { authorization: `Bearer ${token}` },
       body: JSON.stringify({ id: `${kind}-local`, kind }),
     });
-    console.log(`✓ ${kind === "claude-subscription" ? "Claude Subscription" : "Ollama"} connected through this device`);
+    console.log(`${green("✓")} ${kind === "claude-subscription" ? "Claude Subscription" : "Ollama"} connected through this device`);
     return;
   }
   if (!REMOTE_PROVIDERS.includes(kind as (typeof REMOTE_PROVIDERS)[number])) {
@@ -204,7 +205,7 @@ async function configureProvider(config: state.Config, token: string, options: O
       ...(baseUrlValue ? { baseUrl: baseUrlValue.replace(/\/+$/, "") } : {}),
     }),
   });
-  console.log(`✓ ${kind} provider connected`);
+  console.log(`${green("✓")} ${kind} provider connected`);
 }
 
 async function chooseProvider(): Promise<string> {
@@ -218,7 +219,7 @@ async function chooseProvider(): Promise<string> {
     ], 4);
     if (answer === "5") return "later";
     if (answer === "1" || answer === "2") {
-      console.log("That option is not live yet. Choose your own key or configure later.");
+      console.log(`${yellow("!")} That option is not live yet. Choose your own key or configure later.`);
       continue;
     }
     if (answer === "4") {
@@ -232,7 +233,7 @@ async function chooseProvider(): Promise<string> {
           available.map((provider) => ({ value: provider.kind, label: provider.label })),
         );
       }
-      console.log("No authenticated local provider was detected. Run claude login or configure later.");
+      console.log(`${yellow("!")} No authenticated local provider was detected. Run claude login or configure later.`);
       continue;
     }
     return await select("\nWhich provider?", [
