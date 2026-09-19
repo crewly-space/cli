@@ -23,6 +23,24 @@ bun run dev
 npm run build     # native binary
 ```
 
+## Running a server from source
+
+`opencrew init`, `up` and `server start` need `opencrew-server` (and, for
+server + app mode, the `web/` folder). The CLI looks for them in this order:
+
+1. `OPENCREW_SERVER_BIN` / `OPENCREW_WEB_DIR`, if set
+2. next to the `opencrew` executable (the layout the installer produces)
+3. `<config dir>/opencrew/server-bin/`, where the CLI keeps a copy it downloaded
+
+If neither an override nor a copy exists, the CLI downloads the server release
+for this platform, verifies it against the release's `checksums.txt`, and
+unpacks it into `server-bin/`. That is what happens under `bun run dev`, where
+the executable is Bun itself. `OPENCREW_VERSION` pins a release tag and
+`OPENCREW_RELEASE_BASE_URL` points the download at a mirror.
+
+An already downloaded server is not refreshed; delete `server-bin/` to fetch
+the latest one again.
+
 ## Vendored code
 
 ```sh

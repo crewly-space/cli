@@ -4,18 +4,27 @@ import { readFile, unlink } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { isNotFound, writePrivate } from "./fsx.ts";
 import { isWindows } from "./paths.ts";
+import { SERVER_BINARY, install, managedDir } from "./server-install.ts";
 import * as state from "./state.ts";
 
-const SERVER_BINARY = isWindows ? "opencrew-server.exe" : "opencrew-server";
-
+/** An override, else the release layout beside the CLI, else the copy the CLI downloaded itself. */
 export function binaryPath(): string {
   if (process.env.OPENCREW_SERVER_BIN) return process.env.OPENCREW_SERVER_BIN;
-  return join(dirname(process.execPath), SERVER_BINARY);
+  const sibling = join(dirname(process.execPath), SERVER_BINARY);
+  return existsSync(sibling) ? sibling : join(managedDir(), SERVER_BINARY);
 }
 
 export function webPath(): string {
   if (process.env.OPENCREW_WEB_DIR) return process.env.OPENCREW_WEB_DIR;
-  return join(dirname(process.execPath), "web");
+  const sibling = join(dirname(process.execPath), "web");
+  return existsSync(join(sibling, "index.html")) ? sibling : join(managedDir(), "web");
+}
+
+/** Only fetch what the user did not point us at: an override that is missing is their mistake to see. */
+function needsDownload(wantsApp: boolean): boolean {
+  const missingBinary = !process.env.OPENCREW_SERVER_BIN && !existsSync(binaryPath());
+  const missingApp = wantsApp && !process.env.OPENCREW_WEB_DIR && !existsSync(join(webPath(), "index.html"));
+  return missingBinary || missingApp;
 }
 
 export async function start(input?: state.Config): Promise<void> {
@@ -27,6 +36,10 @@ export async function start(input?: state.Config): Promise<void> {
   if (current.running) {
     console.log(`OpenCrew server is already running (pid ${current.pid})`);
     return;
+  }
+  if (needsDownload(config.installMode === "server-app")) {
+    console.log("Downloading the OpenCrew server...");
+    await install();
   }
   const executable = binaryPath();
   if (!existsSync(executable)) {
