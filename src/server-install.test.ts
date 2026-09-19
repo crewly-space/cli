@@ -9,22 +9,22 @@ import { assetName, expectedChecksum, install, managedDir } from "./server-insta
 const dirs: string[] = [];
 const servers: Array<{ stop(force?: boolean): void }> = [];
 const saved = {
-  home: process.env.OPENCREW_HOME,
-  bin: process.env.OPENCREW_SERVER_BIN,
-  web: process.env.OPENCREW_WEB_DIR,
+  home: process.env.CREWLY_HOME,
+  bin: process.env.CREWLY_SERVER_BIN,
+  web: process.env.CREWLY_WEB_DIR,
 };
 
 function tempDir(): string {
-  const dir = mkdtempSync(join(tmpdir(), "opencrew-install-"));
+  const dir = mkdtempSync(join(tmpdir(), "crewly-install-"));
   dirs.push(dir);
   return dir;
 }
 
 function useTempHome(): string {
   const dir = tempDir();
-  process.env.OPENCREW_HOME = dir;
-  delete process.env.OPENCREW_SERVER_BIN;
-  delete process.env.OPENCREW_WEB_DIR;
+  process.env.CREWLY_HOME = dir;
+  delete process.env.CREWLY_SERVER_BIN;
+  delete process.env.CREWLY_WEB_DIR;
   return dir;
 }
 
@@ -36,16 +36,16 @@ function restore(key: string, value: string | undefined): void {
 afterEach(() => {
   while (servers.length > 0) servers.pop()?.stop(true);
   while (dirs.length > 0) rmSync(dirs.pop() as string, { recursive: true, force: true });
-  restore("OPENCREW_HOME", saved.home);
-  restore("OPENCREW_SERVER_BIN", saved.bin);
-  restore("OPENCREW_WEB_DIR", saved.web);
+  restore("CREWLY_HOME", saved.home);
+  restore("CREWLY_SERVER_BIN", saved.bin);
+  restore("CREWLY_WEB_DIR", saved.web);
 });
 
 // Windows ships bsdtar in System32; Git Bash puts GNU tar first on PATH, which cannot read zips.
 const tar = process.platform === "win32"
   ? join(process.env.SystemRoot ?? "C:\\Windows", "System32", "tar.exe")
   : "tar";
-const serverFile = process.platform === "win32" ? "opencrew-server.exe" : "opencrew-server";
+const serverFile = process.platform === "win32" ? "crewly-server.exe" : "crewly-server";
 
 /** Builds a release archive shaped like the real one: the binary plus web/index.html. */
 function buildArchive(): { name: string; bytes: Uint8Array } {
@@ -81,10 +81,10 @@ function serveRelease(archive: { name: string; bytes: Uint8Array }, checksum: st
 
 describe("assetName", () => {
   test("uses a zip for Windows and a tarball elsewhere", () => {
-    expect(assetName("win32", "x64")).toBe("opencrew-server_windows_amd64.zip");
-    expect(assetName("linux", "x64")).toBe("opencrew-server_linux_amd64.tar.gz");
-    expect(assetName("linux", "arm64")).toBe("opencrew-server_linux_arm64.tar.gz");
-    expect(assetName("darwin", "arm64")).toBe("opencrew-server_darwin_arm64.tar.gz");
+    expect(assetName("win32", "x64")).toBe("crewly-server_windows_amd64.zip");
+    expect(assetName("linux", "x64")).toBe("crewly-server_linux_amd64.tar.gz");
+    expect(assetName("linux", "arm64")).toBe("crewly-server_linux_arm64.tar.gz");
+    expect(assetName("darwin", "arm64")).toBe("crewly-server_darwin_arm64.tar.gz");
   });
 
   test("refuses a platform that has no published release", () => {
@@ -95,31 +95,31 @@ describe("assetName", () => {
 
 describe("expectedChecksum", () => {
   const listing = [
-    `${"a".repeat(64)}  opencrew-server_linux_amd64.tar.gz`,
-    `${"B".repeat(64)}  opencrew-server_windows_amd64.zip`,
+    `${"a".repeat(64)}  crewly-server_linux_amd64.tar.gz`,
+    `${"B".repeat(64)}  crewly-server_windows_amd64.zip`,
     `${"c".repeat(64)}  install.sh`,
   ].join("\n");
 
   test("returns the lowercase hash for the matching asset", () => {
-    expect(expectedChecksum(listing, "opencrew-server_windows_amd64.zip")).toBe("b".repeat(64));
+    expect(expectedChecksum(listing, "crewly-server_windows_amd64.zip")).toBe("b".repeat(64));
   });
 
   test("does not match an asset whose name merely ends the same way", () => {
-    expect(() => expectedChecksum(`${"a".repeat(64)}  x-opencrew-server_windows_amd64.zip`, "opencrew-server_windows_amd64.zip"))
+    expect(() => expectedChecksum(`${"a".repeat(64)}  x-crewly-server_windows_amd64.zip`, "crewly-server_windows_amd64.zip"))
       .toThrow(/missing/i);
   });
 
   test("throws when the release lists no checksum for the asset", () => {
-    expect(() => expectedChecksum(listing, "opencrew-server_darwin_arm64.tar.gz")).toThrow(/missing/i);
+    expect(() => expectedChecksum(listing, "crewly-server_darwin_arm64.tar.gz")).toThrow(/missing/i);
   });
 });
 
 describe("binary and app location", () => {
   test("an explicit override always wins", () => {
     useTempHome();
-    process.env.OPENCREW_SERVER_BIN = "C:\\custom\\opencrew-server.exe";
-    process.env.OPENCREW_WEB_DIR = "C:\\custom\\web";
-    expect(binaryPath()).toBe("C:\\custom\\opencrew-server.exe");
+    process.env.CREWLY_SERVER_BIN = "C:\\custom\\crewly-server.exe";
+    process.env.CREWLY_WEB_DIR = "C:\\custom\\web";
+    expect(binaryPath()).toBe("C:\\custom\\crewly-server.exe");
     expect(webPath()).toBe("C:\\custom\\web");
   });
 

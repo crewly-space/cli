@@ -33,7 +33,7 @@ const REMOTE_PROVIDERS = ["anthropic", "openai", "openrouter", "deepseek", "open
 export async function init(args: string[], entrypoint = import.meta.path): Promise<void> {
   const options = parseOptions(args);
   const config = await state.load();
-  console.log("\nOpenCrew setup\n──────────────");
+  console.log("\nCrewly setup\n──────────────");
 
   const mode = options.mode ?? (options.yes ? "server-app" : await chooseMode());
   if (mode === "connect") return configureConnection(config, options, entrypoint);
@@ -69,7 +69,7 @@ export async function init(args: string[], entrypoint = import.meta.path): Promi
   if (alreadyPaired) console.log("✓ Device is already paired");
   if (paired) await startDaemon(entrypoint);
 
-  console.log(`\n✓ OpenCrew is ready at ${config.serverUrl}`);
+  console.log(`\n✓ Crewly is ready at ${config.serverUrl}`);
   if (mode === "server-app" && !options.noOpen) await server.open(config);
 }
 
@@ -83,7 +83,7 @@ async function chooseMode(): Promise<Mode> {
 
 async function configureConnection(config: state.Config, options: Options, entrypoint: string): Promise<void> {
   if (options.yes && !options.url) throw new Error("--url is required with --mode connect --yes");
-  const url = options.url ?? await readLineDefault("OpenCrew server URL", config.serverUrl);
+  const url = options.url ?? await readLineDefault("Crewly server URL", config.serverUrl);
   validateUrl(url);
   const dir = await state.ensureDir();
   const id = await identity.loadOrCreate(dir);
@@ -104,7 +104,7 @@ async function configureConnection(config: state.Config, options: Options, entry
 }
 
 async function startDaemon(entrypoint: string): Promise<void> {
-  if (process.env.OPENCREW_NO_SERVICE === "1") {
+  if (process.env.CREWLY_NO_SERVICE === "1") {
     await daemon.start(entrypoint);
     return;
   }
@@ -123,15 +123,15 @@ async function ensureOwner(baseUrl: string, dataDir: string, options: Options): 
     console.log("✓ Owner account already exists");
     return null;
   }
-  if (options.yes && (!options.email || !process.env.OPENCREW_ADMIN_PASSWORD)) {
-    console.log("· Create the first owner in the app, or set OPENCREW_ADMIN_PASSWORD with --email for unattended setup.");
+  if (options.yes && (!options.email || !process.env.CREWLY_ADMIN_PASSWORD)) {
+    console.log("· Create the first owner in the app, or set CREWLY_ADMIN_PASSWORD with --email for unattended setup.");
     return null;
   }
 
   console.log("\nCreate the first owner account");
   const displayName = options.name ?? await readLineDefault("Display name", hostname());
   const email = options.email ?? await readLine("Email: ");
-  const password = process.env.OPENCREW_ADMIN_PASSWORD ?? await promptPassword();
+  const password = process.env.CREWLY_ADMIN_PASSWORD ?? await promptPassword();
   let claimToken: string | undefined;
   if (status.claimRequired) {
     try {
@@ -157,8 +157,8 @@ async function configureProvider(config: state.Config, token: string, options: O
     console.log("· Model provider skipped; add one from the app when ready.");
     return;
   }
-  if (kind === "opencrew" || kind === "account") {
-    throw new Error(`${kind === "opencrew" ? "OpenCrew model access" : "OpenCrew account linking"} is not available until the hosted gateway is deployed`);
+  if (kind === "crewly" || kind === "account") {
+    throw new Error(`${kind === "crewly" ? "Crewly model access" : "Crewly account linking"} is not available until the hosted gateway is deployed`);
   }
   if (kind === "claude-subscription" || kind === "ollama") {
     if (kind === "claude-subscription" && !localProvider.claudeSubscriptionAvailable()) {
@@ -193,7 +193,7 @@ async function configureProvider(config: state.Config, token: string, options: O
   if (kind === "openai-compatible" && !baseUrlValue) {
     baseUrlValue = await readLineDefault("API base URL", "http://127.0.0.1:8080/v1");
   }
-  const apiKey = options.apiKey ?? process.env.OPENCREW_PROVIDER_API_KEY ?? await promptApiKey();
+  const apiKey = options.apiKey ?? process.env.CREWLY_PROVIDER_API_KEY ?? await promptApiKey();
   await request(baseUrl, "/api/v1/providers", {
     method: "POST",
     headers: { authorization: `Bearer ${token}` },
@@ -210,8 +210,8 @@ async function configureProvider(config: state.Config, token: string, options: O
 async function chooseProvider(): Promise<string> {
   for (;;) {
     const answer = await select("\nHow should agents access AI models?", [
-      { value: "1", label: "OpenCrew model subscription", hint: "(coming with hosted gateway)" },
-      { value: "2", label: "Link an OpenCrew account", hint: "(coming with hosted gateway)" },
+      { value: "1", label: "Crewly model subscription", hint: "(coming with hosted gateway)" },
+      { value: "2", label: "Link an Crewly account", hint: "(coming with hosted gateway)" },
       { value: "3", label: "Bring your own API key" },
       { value: "4", label: "Use a detected local provider" },
       { value: "5", label: "Configure later" },

@@ -53,9 +53,9 @@ export interface Config {
 }
 
 export function dir(): string {
-  const override = process.env.OPENCREW_HOME;
+  const override = process.env.CREWLY_HOME;
   if (override) return isAbsolute(override) ? override : resolve(override);
-  return join(userConfigDir(), "opencrew");
+  return join(userConfigDir(), "crewly");
 }
 
 export async function ensureDir(): Promise<string> {

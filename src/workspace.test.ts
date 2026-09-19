@@ -7,7 +7,7 @@ import { resolveWithin } from "./workspace.ts";
 const dirs: string[] = [];
 
 function tempDir(): string {
-  const dir = realpathSync(mkdtempSync(join(tmpdir(), "opencrew-ws-")));
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), "crewly-ws-")));
   dirs.push(dir);
   return dir;
 }

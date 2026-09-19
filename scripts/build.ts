@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * Cross-compiles the standalone `opencrew` binaries the installer downloads.
+ * Cross-compiles the standalone `crewly` binaries the installer downloads.
  * Each target produces one self-contained executable with the Bun runtime embedded,
  * so a user's machine still needs nothing installed.
  */
@@ -16,11 +16,11 @@ interface Target {
 }
 
 const TARGETS: Target[] = [
-  { target: "bun-linux-x64", asset: "opencrew_linux_amd64", binary: "opencrew" },
-  { target: "bun-linux-arm64", asset: "opencrew_linux_arm64", binary: "opencrew" },
-  { target: "bun-darwin-x64", asset: "opencrew_darwin_amd64", binary: "opencrew" },
-  { target: "bun-darwin-arm64", asset: "opencrew_darwin_arm64", binary: "opencrew" },
-  { target: "bun-windows-x64", asset: "opencrew_windows_amd64", binary: "opencrew.exe" },
+  { target: "bun-linux-x64", asset: "crewly_linux_amd64", binary: "crewly" },
+  { target: "bun-linux-arm64", asset: "crewly_linux_arm64", binary: "crewly" },
+  { target: "bun-darwin-x64", asset: "crewly_darwin_amd64", binary: "crewly" },
+  { target: "bun-darwin-arm64", asset: "crewly_darwin_arm64", binary: "crewly" },
+  { target: "bun-windows-x64", asset: "crewly_windows_amd64", binary: "crewly.exe" },
 ];
 
 const OUT_DIR = join(import.meta.dir, "..", "dist");

@@ -37,7 +37,7 @@ async function installLinux(executable: string, prefixArgs: string[]): Promise<v
   const dir = join(userConfigDir(), "systemd", "user");
   await mkdir(dir, { recursive: true, mode: 0o700 });
   const unit = `[Unit]
-Description=OpenCrew local agent daemon
+Description=Crewly local agent daemon
 After=network-online.target
 
 [Service]
@@ -51,29 +51,29 @@ PrivateTmp=true
 [Install]
 WantedBy=default.target
 `;
-  await writePrivate(join(dir, "opencrew-agentd.service"), unit);
+  await writePrivate(join(dir, "crewly-agentd.service"), unit);
   const reload = await run(["systemctl", "--user", "daemon-reload"]);
   if (!reload.ok) throw new Error(`reload user services: ${reload.output}`);
-  const enable = await run(["systemctl", "--user", "enable", "--now", "opencrew-agentd.service"]);
+  const enable = await run(["systemctl", "--user", "enable", "--now", "crewly-agentd.service"]);
   if (!enable.ok) throw new Error(`enable agentd: ${enable.output}`);
 }
 
 async function installDarwin(executable: string, prefixArgs: string[]): Promise<void> {
   const dir = join(homedir(), "Library", "LaunchAgents");
   await mkdir(dir, { recursive: true, mode: 0o700 });
-  const path = join(dir, "dev.opencrew.agentd.plist");
-  const logPath = join(userConfigDir(), "opencrew", "agentd.log");
+  const path = join(dir, "dev.crewly.agentd.plist");
+  const logPath = join(userConfigDir(), "crewly", "agentd.log");
   const plist = `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
-<key>Label</key><string>dev.opencrew.agentd</string>
+<key>Label</key><string>dev.crewly.agentd</string>
 <key>ProgramArguments</key><array>${[executable, ...prefixArgs, "_serve"].map((value) => `<string>${xmlEscape(value)}</string>`).join("")}</array>
 <key>RunAtLoad</key><true/><key>KeepAlive</key><true/>
 <key>StandardOutPath</key><string>${logPath}</string><key>StandardErrorPath</key><string>${logPath}</string>
 </dict></plist>`;
   await writePrivate(path, plist);
   const domain = `gui/${process.getuid?.() ?? 0}`;
-  await run(["launchctl", "bootout", `${domain}/dev.opencrew.agentd`]);
+  await run(["launchctl", "bootout", `${domain}/dev.crewly.agentd`]);
   const bootstrap = await run(["launchctl", "bootstrap", domain, path]);
   if (!bootstrap.ok) throw new Error(`load agentd: ${bootstrap.output}`);
 }
@@ -81,10 +81,10 @@ async function installDarwin(executable: string, prefixArgs: string[]): Promise<
 async function installWindows(executable: string, prefixArgs: string[]): Promise<void> {
   const command = [executable, ...prefixArgs, "_serve"].map(windowsQuote).join(" ");
   const create = await run([
-    "schtasks.exe", "/Create", "/TN", "OpenCrew agentd", "/SC", "ONLOGON", "/TR", command, "/F",
+    "schtasks.exe", "/Create", "/TN", "Crewly agentd", "/SC", "ONLOGON", "/TR", command, "/F",
   ]);
   if (!create.ok) throw new Error(`register agentd task: ${create.output}`);
-  const start = await run(["schtasks.exe", "/Run", "/TN", "OpenCrew agentd"]);
+  const start = await run(["schtasks.exe", "/Run", "/TN", "Crewly agentd"]);
   if (!start.ok) throw new Error(`start agentd task: ${start.output}`);
 }
 

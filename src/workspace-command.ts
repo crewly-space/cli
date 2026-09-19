@@ -4,12 +4,12 @@ import * as workspace from "./workspace.ts";
 
 export async function command(args: string[]): Promise<void> {
   const [action, ...rest] = args;
-  if (!action) throw new Error("usage: opencrew workspace add|list");
+  if (!action) throw new Error("usage: crewly workspace add|list");
   const config = await state.load();
   switch (action) {
     case "list":
       if (config.workspaces.length === 0) {
-        console.log("No workspaces yet. Add one with: opencrew workspace add");
+        console.log("No workspaces yet. Add one with: crewly workspace add");
         return;
       }
       for (const entry of config.workspaces) {

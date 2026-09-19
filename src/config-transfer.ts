@@ -3,7 +3,7 @@ import * as state from "./state.ts";
 
 export async function backup(args: string[]): Promise<void> {
   const [target] = args;
-  if (args.length !== 1 || !target) throw new Error("usage: opencrew backup <file>");
+  if (args.length !== 1 || !target) throw new Error("usage: crewly backup <file>");
   const config = await state.load();
   const omitted = config.providers.filter((provider) => provider.secretRef).length;
   config.providers = config.providers.filter((provider) => !provider.secretRef);
@@ -16,9 +16,9 @@ export async function backup(args: string[]): Promise<void> {
 
 export async function restore(args: string[]): Promise<void> {
   const [source] = args;
-  if (args.length !== 1 || !source) throw new Error("usage: opencrew restore <file>");
+  if (args.length !== 1 || !source) throw new Error("usage: crewly restore <file>");
   const config = JSON.parse(await readFile(source, "utf8")) as state.Config;
   if (config.version !== 1) throw new Error("unsupported backup version");
   await state.save(config);
-  console.log("Configuration restored. Run 'opencrew doctor' to verify this device.");
+  console.log("Configuration restored. Run 'crewly doctor' to verify this device.");
 }

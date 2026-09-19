@@ -90,7 +90,7 @@ export async function install(id: string): Promise<void> {
   console.log(`  Run "${target.signIn}" once to sign in.`);
 }
 
-/** Interactive picker used by `opencrew runtime install` with no argument. */
+/** Interactive picker used by `crewly runtime install` with no argument. */
 export async function installInteractive(): Promise<void> {
   const missing = INSTALLABLE.filter((item) => !detect.look(item.binary));
   if (missing.length === 0) {
@@ -116,7 +116,7 @@ export function list(): void {
   const missing = INSTALLABLE.filter((item) => !detect.look(item.binary));
   console.log(
     missing.length > 0
-      ? `\nInstall with: opencrew runtime install ${missing[0]!.id}`
+      ? `\nInstall with: crewly runtime install ${missing[0]!.id}`
       : "\nBoth runtimes are installed.",
   );
 }

@@ -46,7 +46,7 @@ export async function pairDevice(
   }
 
   if (options.waitForApproval === false) {
-    console.log("Complete approval in the app, then run 'opencrew connect' again.");
+    console.log("Complete approval in the app, then run 'crewly connect' again.");
     return false;
   }
 
@@ -69,7 +69,7 @@ export async function pairDevice(
     await Bun.sleep(options.pollIntervalMs ?? 2_000);
   }
   console.log();
-  throw new Error("pairing code expired; run 'opencrew connect' to try again");
+  throw new Error("pairing code expired; run 'crewly connect' to try again");
 }
 
 async function request<T = unknown>(baseUrl: string, path: string, init: RequestInit): Promise<T> {

@@ -1,13 +1,13 @@
 {
-  "name": "opencrew-cli",
+  "name": "crewly-cli",
   "version": "0.1.0",
   "license": "MIT",
   "private": true,
   "type": "module",
   "module": "src/index.ts",
-  "description": "Installs, updates and manages an OpenCrew server and app on a machine.",
+  "description": "Installs, updates and manages an Crewly server and app on a machine.",
   "bin": {
-    "opencrew": "./src/index.ts"
+    "crewly": "./src/index.ts"
   },
   "scripts": {
     "dev": "bun run src/index.ts",
@@ -26,8 +26,8 @@
   },
   "vendor": [
     {
-      "owner": "opencrew-server",
-      "from": "../opencrew-server/src/protocol",
+      "owner": "crewly-server",
+      "from": "../server/src/protocol",
       "to": "src/protocol"
     }
   ]

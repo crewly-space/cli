@@ -9,7 +9,7 @@ import { loadOrCreate } from "./identity.ts";
 const dirs: string[] = [];
 
 function tempDir(): string {
-  const dir = mkdtempSync(join(tmpdir(), "opencrew-id-"));
+  const dir = mkdtempSync(join(tmpdir(), "crewly-id-"));
   dirs.push(dir);
   return dir;
 }

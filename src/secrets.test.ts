@@ -7,7 +7,7 @@ import { Store } from "./secrets.ts";
 const dirs: string[] = [];
 
 function tempDir(): string {
-  const dir = mkdtempSync(join(tmpdir(), "opencrew-secrets-"));
+  const dir = mkdtempSync(join(tmpdir(), "crewly-secrets-"));
   dirs.push(dir);
   return dir;
 }

@@ -10,8 +10,8 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: '24' }
       # Vendored copies must match the owning repo; clone it as a sibling.
-      - name: Clone opencrew-server
-        run: git clone --depth 1 https://github.com/opentribe-dev/opencrew-server.git ../opencrew-server
+      - name: Clone crewly-server
+        run: git clone --depth 1 https://github.com/crewly-space/server.git ../server
       - run: bun install
       - run: npm run vendor:check
       - run: bun test

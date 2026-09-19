@@ -84,21 +84,21 @@ async function run(args: string[]): Promise<void> {
     case "version":
     case "--version":
     case "-v":
-      console.log("opencrew", VERSION);
+      console.log("crewly", VERSION);
       return;
     case "help":
     case "--help":
     case "-h":
       return help();
     default:
-      throw new Error(`unknown command "${command}"; run opencrew help`);
+      throw new Error(`unknown command "${command}"; run crewly help`);
   }
 }
 
 async function dashboard(): Promise<void> {
   const config = await state.load();
   process.stdout.write("\x1b[2J\x1b[H");
-  console.log("  OpenCrew");
+  console.log("  Crewly");
   console.log("  Your agents, on your terms.\n");
   if (config.installMode === "unconfigured") {
     console.log("  Setup is ready. Press Enter to begin, or q to quit.");
@@ -120,8 +120,8 @@ async function connect(args: string[]): Promise<void> {
   // Without this an unknown flag is taken as the server URL, and the failure
   // shows up as "server URL must be a valid http or https address".
   const flag = args.find((arg) => arg.startsWith("-"));
-  if (flag) throw new Error(`unknown option "${flag}"; usage: opencrew connect [server-url]`);
-  if (args.length > 1) throw new Error("usage: opencrew connect [server-url]");
+  if (flag) throw new Error(`unknown option "${flag}"; usage: crewly connect [server-url]`);
+  if (args.length > 1) throw new Error("usage: crewly connect [server-url]");
   const config = await state.load();
   if (args[0]) config.serverUrl = args[0].replace(/\/+$/, "");
   let parsed: URL;
@@ -154,18 +154,18 @@ async function setup(): Promise<void> {
   const id = await identity.loadOrCreate(dir);
   config.deviceId = id.deviceId;
 
-  console.log("\nOpenCrew setup\n──────────────");
+  console.log("\nCrewly setup\n──────────────");
   const name = (await readLineDefault("Device name", config.deviceName)).trim();
-  const server = (await readLineDefault("OpenCrew URL", config.serverUrl)).trim().replace(/\/+$/, "");
+  const server = (await readLineDefault("Crewly URL", config.serverUrl)).trim().replace(/\/+$/, "");
   if (name === "") throw new Error("device name cannot be empty");
   let parsed: URL;
   try {
     parsed = new URL(server);
   } catch {
-    throw new Error("OpenCrew URL must be a valid http or https address");
+    throw new Error("Crewly URL must be a valid http or https address");
   }
   if ((parsed.protocol !== "http:" && parsed.protocol !== "https:") || parsed.host === "") {
-    throw new Error("OpenCrew URL must be a valid http or https address");
+    throw new Error("Crewly URL must be a valid http or https address");
   }
   config.deviceName = name;
   config.serverUrl = server;
@@ -186,16 +186,16 @@ async function setup(): Promise<void> {
   await state.save(config);
   console.log(`\n✓ Device identity created: ${config.deviceId}`);
   console.log("✓ Credentials and runtime access stay on this device");
-  if (config.providers.length === 0) console.log("\nNext: opencrew provider add");
-  else if (config.workspaces.length === 0) console.log("\nNext: opencrew workspace add");
-  else console.log("\nReady: opencrew agentd install");
+  if (config.providers.length === 0) console.log("\nNext: crewly provider add");
+  else if (config.workspaces.length === 0) console.log("\nNext: crewly workspace add");
+  else console.log("\nReady: crewly agentd install");
 }
 
 async function status(): Promise<void> {
   const config = await state.load();
   const { running, pid } = await daemon.running(state.dir());
   const serverState = await server.running();
-  console.log(`OpenCrew ${VERSION} (${detect.platform()})`);
+  console.log(`Crewly ${VERSION} (${detect.platform()})`);
   console.log(`Mode: ${config.installMode}`);
   console.log(`Server: ${serverState.running ? `running (pid ${serverState.pid})` : "stopped"} · ${config.serverUrl}`);
   console.log(`Agentd: ${running ? `running (pid ${pid})` : "stopped"}`);
@@ -238,7 +238,7 @@ async function doctor(): Promise<void> {
       detail: config?.serverUrl || "Not configured",
     },
   ];
-  console.log("OpenCrew doctor\n");
+  console.log("Crewly doctor\n");
   let failed = false;
   for (const check of checks) {
     console.log(`${mark(check.ok)} ${check.name.padEnd(22)} ${check.detail}`);
@@ -249,7 +249,7 @@ async function doctor(): Promise<void> {
     console.log(`${mark(runtime.installed)} ${runtime.name.padEnd(22)} ${runtime.detail}`);
   }
   if (failed) {
-    console.log("\nNext: run 'opencrew setup' to repair required configuration.");
+    console.log("\nNext: run 'crewly setup' to repair required configuration.");
     throw new AlreadyReported();
   }
   console.log("\nEverything required is ready.");
@@ -264,13 +264,13 @@ async function runtimeCommand(args: string[]): Promise<void> {
     case "install":
       return target ? await runtimeInstall.install(target) : await runtimeInstall.installInteractive();
     default:
-      throw new Error(`unknown runtime command "${action}"; usage: opencrew runtime list|install [name]`);
+      throw new Error(`unknown runtime command "${action}"; usage: crewly runtime list|install [name]`);
   }
 }
 
 async function agentdCommand(args: string[]): Promise<void> {
   const [action] = args;
-  if (!action) throw new Error("usage: opencrew agentd install|status");
+  if (!action) throw new Error("usage: crewly agentd install|status");
   switch (action) {
     case "status":
       return status();
@@ -294,21 +294,21 @@ async function serverCommand(args: string[]): Promise<void> {
       return server.restart();
     case "status": {
       const current = await server.running();
-      console.log(current.running ? `OpenCrew server is running (pid ${current.pid})` : "OpenCrew server is stopped");
+      console.log(current.running ? `Crewly server is running (pid ${current.pid})` : "Crewly server is stopped");
       return;
     }
     case "logs":
       return server.logs(rest.includes("--all"));
     default:
-      throw new Error("usage: opencrew server start|stop|restart|status|logs");
+      throw new Error("usage: crewly server start|stop|restart|status|logs");
   }
 }
 
 function update(): void {
   if (isWindows) {
-    console.log("Run this in PowerShell to update OpenCrew:\n\n  irm https://opencrew.dev/install.ps1 | iex");
+    console.log("Run this in PowerShell to update Crewly:\n\n  irm https://crewly.space/install.ps1 | iex");
   } else {
-    console.log("Run this command to update OpenCrew:\n\n  curl -fsSL https://opencrew.dev/install.sh | sh");
+    console.log("Run this command to update Crewly:\n\n  curl -fsSL https://crewly.space/install.sh | sh");
   }
 }
 
@@ -317,30 +317,30 @@ function mark(ok: boolean): string {
 }
 
 function help(): void {
-  console.log(`OpenCrew — your local agent bridge
+  console.log(`Crewly — your local agent bridge
 
 Usage:
-  opencrew                         Open the local dashboard
-  opencrew init                    Choose server, app, and model access
-  opencrew connect [server-url]    Pair this computer with a server
-  opencrew up|down                 Start or stop the local server
-  opencrew open                    Open the app in your browser
-  opencrew status                  Show server, device, and provider state
-  opencrew server start|stop|restart|status|logs
-  opencrew start|stop|restart      Control the local device daemon
-  opencrew doctor                  Check required setup and optional runtimes
-  opencrew logs [--all]            Show recent daemon logs
-  opencrew update                  Print the safe update command
-  opencrew backup <file>           Back up configuration without API credentials
-  opencrew restore <file>          Restore a configuration backup
+  crewly                         Open the local dashboard
+  crewly init                    Choose server, app, and model access
+  crewly connect [server-url]    Pair this computer with a server
+  crewly up|down                 Start or stop the local server
+  crewly open                    Open the app in your browser
+  crewly status                  Show server, device, and provider state
+  crewly server start|stop|restart|status|logs
+  crewly start|stop|restart      Control the local device daemon
+  crewly doctor                  Check required setup and optional runtimes
+  crewly logs [--all]            Show recent daemon logs
+  crewly update                  Print the safe update command
+  crewly backup <file>           Back up configuration without API credentials
+  crewly restore <file>          Restore a configuration backup
 
 Providers and workspaces:
-  opencrew provider add|list|test
-  opencrew workspace add [path]|list
-  opencrew agentd install|status
-  opencrew runtime list|install [claude-code|codex]
+  crewly provider add|list|test
+  crewly workspace add [path]|list
+  crewly agentd install|status
+  crewly runtime list|install [claude-code|codex]
 
-Run 'opencrew init' to get started.`);
+Run 'crewly init' to get started.`);
 }
 
 await main();

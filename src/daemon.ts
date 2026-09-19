@@ -17,8 +17,8 @@ export async function start(entrypoint: string): Promise<void> {
     return;
   }
   const config = await state.load();
-  if (config.deviceId === "") throw new Error("setup is incomplete; run 'opencrew setup' first");
-  if (!config.paired) throw new Error("device is not paired; run 'opencrew connect' first");
+  if (config.deviceId === "") throw new Error("setup is incomplete; run 'crewly setup' first");
+  if (!config.paired) throw new Error("device is not paired; run 'crewly connect' first");
 
   const logFd = openSync(join(dir, "agentd.log"), "a", 0o600);
   try {
@@ -72,8 +72,8 @@ export async function serve(): Promise<void> {
     throw new Error(`write agentd pid: ${(error as Error).message}`);
   }
   const config = await state.load();
-  if (config.deviceId === "") throw new Error("run opencrew setup before starting agentd");
-  if (!config.paired) throw new Error("device is not paired; run 'opencrew connect'");
+  if (config.deviceId === "") throw new Error("run crewly setup before starting agentd");
+  if (!config.paired) throw new Error("device is not paired; run 'crewly connect'");
   const deviceIdentity = await identity.loadOrCreate(dir);
   if (deviceIdentity.deviceId !== config.deviceId) throw new Error("configured device identity does not match device key");
   console.log(`${new Date().toISOString()} agentd starting for ${config.deviceId}`);
@@ -203,7 +203,7 @@ export async function logs(args: string[]): Promise<void> {
   let lines = raw.replace(/[\r\n]+$/, "").split("\n");
   if (args.length === 0 && lines.length > 200) {
     lines = lines.slice(-200);
-    console.log("Showing the latest 200 lines. Use 'opencrew logs --all' for everything.\n");
+    console.log("Showing the latest 200 lines. Use 'crewly logs --all' for everything.\n");
   }
   console.log(lines.join("\n"));
 }

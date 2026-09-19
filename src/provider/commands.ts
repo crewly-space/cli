@@ -17,12 +17,12 @@ const OPTIONS = [
 
 export async function command(args: string[]): Promise<void> {
   const [action] = args;
-  if (!action) throw new Error("usage: opencrew provider add|list|test");
+  if (!action) throw new Error("usage: crewly provider add|list|test");
   const config = await state.load();
   switch (action) {
     case "list":
       if (config.providers.length === 0) {
-        console.log("No providers configured. Run: opencrew provider add");
+        console.log("No providers configured. Run: crewly provider add");
         return;
       }
       for (const provider of config.providers) {

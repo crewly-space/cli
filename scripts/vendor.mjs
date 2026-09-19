@@ -2,7 +2,7 @@
 /*
  * Refresh the vendored copies of code this repository does not own.
  *
- * OpenCrew is split across four repositories with no shared workspace. Each
+ * Crewly is split across four repositories with no shared workspace. Each
  * shared piece has exactly one owning repository; every other repository
  * commits a copy, so `npm ci`, Docker builds and fresh clones all work with no
  * sibling checkout present.

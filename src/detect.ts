@@ -75,7 +75,7 @@ function subscriptionDetail(installed: boolean, authenticated: boolean): string 
   return "Claude Code is required for local subscription access";
 }
 
-/** Reports the Go-style os/arch pair the rest of OpenCrew already speaks. */
+/** Reports the Go-style os/arch pair the rest of Crewly already speaks. */
 export function platform(): string {
   const os: Record<string, string> = { win32: "windows", darwin: "darwin", linux: "linux" };
   const arch: Record<string, string> = { x64: "amd64", arm64: "arm64" };

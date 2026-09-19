@@ -9,41 +9,41 @@ import * as state from "./state.ts";
 
 /** An override, else the release layout beside the CLI, else the copy the CLI downloaded itself. */
 export function binaryPath(): string {
-  if (process.env.OPENCREW_SERVER_BIN) return process.env.OPENCREW_SERVER_BIN;
+  if (process.env.CREWLY_SERVER_BIN) return process.env.CREWLY_SERVER_BIN;
   const sibling = join(dirname(process.execPath), SERVER_BINARY);
   return existsSync(sibling) ? sibling : join(managedDir(), SERVER_BINARY);
 }
 
 export function webPath(): string {
-  if (process.env.OPENCREW_WEB_DIR) return process.env.OPENCREW_WEB_DIR;
+  if (process.env.CREWLY_WEB_DIR) return process.env.CREWLY_WEB_DIR;
   const sibling = join(dirname(process.execPath), "web");
   return existsSync(join(sibling, "index.html")) ? sibling : join(managedDir(), "web");
 }
 
 /** Only fetch what the user did not point us at: an override that is missing is their mistake to see. */
 function needsDownload(wantsApp: boolean): boolean {
-  const missingBinary = !process.env.OPENCREW_SERVER_BIN && !existsSync(binaryPath());
-  const missingApp = wantsApp && !process.env.OPENCREW_WEB_DIR && !existsSync(join(webPath(), "index.html"));
+  const missingBinary = !process.env.CREWLY_SERVER_BIN && !existsSync(binaryPath());
+  const missingApp = wantsApp && !process.env.CREWLY_WEB_DIR && !existsSync(join(webPath(), "index.html"));
   return missingBinary || missingApp;
 }
 
 export async function start(input?: state.Config): Promise<void> {
   const config = input ?? await state.load();
   if (config.installMode !== "server" && config.installMode !== "server-app") {
-    throw new Error("this device is not configured to host a server; run 'opencrew init'");
+    throw new Error("this device is not configured to host a server; run 'crewly init'");
   }
   const current = await running();
   if (current.running) {
-    console.log(`OpenCrew server is already running (pid ${current.pid})`);
+    console.log(`Crewly server is already running (pid ${current.pid})`);
     return;
   }
   if (needsDownload(config.installMode === "server-app")) {
-    console.log("Downloading the OpenCrew server...");
+    console.log("Downloading the Crewly server...");
     await install();
   }
   const executable = binaryPath();
   if (!existsSync(executable)) {
-    throw new Error(`server binary not found at ${executable}; reinstall OpenCrew`);
+    throw new Error(`server binary not found at ${executable}; reinstall Crewly`);
   }
   const args = [
     "--host", config.server.host,
@@ -53,7 +53,7 @@ export async function start(input?: state.Config): Promise<void> {
   if (config.installMode === "server-app") {
     const webDir = webPath();
     if (!existsSync(join(webDir, "index.html"))) {
-      throw new Error(`app files not found at ${webDir}; reinstall OpenCrew or choose server-only mode`);
+      throw new Error(`app files not found at ${webDir}; reinstall Crewly or choose server-only mode`);
     }
     args.push("--web-dir", webDir);
   }
@@ -66,11 +66,11 @@ export async function start(input?: state.Config): Promise<void> {
       stdio: ["ignore", logFd, logFd],
       windowsHide: true,
     });
-    if (child.pid === undefined) throw new Error("could not start OpenCrew server");
+    if (child.pid === undefined) throw new Error("could not start Crewly server");
     await writePrivate(join(dir, "server.pid"), String(child.pid));
     child.unref();
     await waitUntilReady(config.serverUrl, child.pid);
-    console.log(`OpenCrew server started (pid ${child.pid})`);
+    console.log(`Crewly server started (pid ${child.pid})`);
   } finally {
     closeSync(logFd);
   }
@@ -83,7 +83,7 @@ export async function stop(): Promise<void> {
     raw = await readFile(path, "utf8");
   } catch (error) {
     if (isNotFound(error)) {
-      console.log("OpenCrew server is not running");
+      console.log("Crewly server is not running");
       return;
     }
     throw error;
@@ -96,7 +96,7 @@ export async function stop(): Promise<void> {
     if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error;
   }
   await unlink(path).catch(() => {});
-  console.log("OpenCrew server stopped");
+  console.log("Crewly server stopped");
 }
 
 export async function restart(): Promise<void> {
@@ -165,9 +165,9 @@ async function waitUntilReady(baseUrl: string, pid: number): Promise<void> {
     try {
       process.kill(pid, 0);
     } catch {
-      throw new Error(`server exited before becoming ready; run 'opencrew server logs'`);
+      throw new Error(`server exited before becoming ready; run 'crewly server logs'`);
     }
     await Bun.sleep(250);
   }
-  throw new Error(`server did not become ready at ${endpoint}; run 'opencrew server logs'`);
+  throw new Error(`server did not become ready at ${endpoint}; run 'crewly server logs'`);
 }

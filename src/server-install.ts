@@ -5,9 +5,9 @@ import { join } from "node:path";
 import { isWindows } from "./paths.ts";
 import * as state from "./state.ts";
 
-const REPOSITORY = "opentribe-dev/opencrew-server";
+const REPOSITORY = "crewly-space/server";
 
-export const SERVER_BINARY = isWindows ? "opencrew-server.exe" : "opencrew-server";
+export const SERVER_BINARY = isWindows ? "crewly-server.exe" : "crewly-server";
 
 /**
  * Where a server fetched by the CLI lives. The sibling-of-the-executable layout
@@ -21,14 +21,14 @@ export function managedDir(): string {
 const OS_NAMES: Record<string, string> = { win32: "windows", linux: "linux", darwin: "darwin" };
 const ARCH_NAMES: Record<string, string> = { x64: "amd64", arm64: "arm64" };
 
-/** The release asset for a platform, named as opencrew-server's package-release.sh names it. */
+/** The release asset for a platform, named as crewly-server's package-release.sh names it. */
 export function assetName(platform: string = process.platform, arch: string = process.arch): string {
   const os = OS_NAMES[platform];
   const cpu = ARCH_NAMES[arch];
   if (!os || !cpu || (os === "windows" && cpu !== "amd64")) {
-    throw new Error(`no OpenCrew server release is published for ${os ?? platform}/${cpu ?? arch}`);
+    throw new Error(`no Crewly server release is published for ${os ?? platform}/${cpu ?? arch}`);
   }
-  return `opencrew-server_${os}_${cpu}.${os === "windows" ? "zip" : "tar.gz"}`;
+  return `crewly-server_${os}_${cpu}.${os === "windows" ? "zip" : "tar.gz"}`;
 }
 
 /** Reads one asset's SHA-256 out of a release's checksums.txt (`<hash>  <name>` per line). */
@@ -41,9 +41,9 @@ export function expectedChecksum(listing: string, asset: string): string {
 }
 
 function releaseUrl(): string {
-  const override = process.env.OPENCREW_RELEASE_BASE_URL;
+  const override = process.env.CREWLY_RELEASE_BASE_URL;
   if (override) return override;
-  const version = process.env.OPENCREW_VERSION || "latest";
+  const version = process.env.CREWLY_VERSION || "latest";
   return version === "latest"
     ? `https://github.com/${REPOSITORY}/releases/latest/download`
     : `https://github.com/${REPOSITORY}/releases/download/${version}`;

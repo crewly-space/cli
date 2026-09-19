@@ -9,14 +9,14 @@ import * as state from "./state.ts";
 
 let temporaryHome = "";
 afterEach(async () => {
-  delete process.env.OPENCREW_HOME;
+  delete process.env.CREWLY_HOME;
   if (temporaryHome) await rm(temporaryHome, { recursive: true, force: true });
   temporaryHome = "";
 });
 
 test("pairs with an authenticated approval and persists the result", async () => {
-  temporaryHome = await mkdtemp(join(tmpdir(), "opencrew-pairing-"));
-  process.env.OPENCREW_HOME = temporaryHome;
+  temporaryHome = await mkdtemp(join(tmpdir(), "crewly-pairing-"));
+  process.env.CREWLY_HOME = temporaryHome;
   let approved = false;
   const server = Bun.serve({
     port: 0,

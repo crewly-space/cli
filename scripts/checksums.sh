@@ -6,7 +6,7 @@
 set -eu
 ROOT=$(CDPATH='' cd -- "$(dirname "$0")/.." && pwd)
 cd "$ROOT"
-FILES="dist/opencrew-cli_*.tar.gz dist/opencrew-cli_*.zip"
+FILES="dist/crewly-cli_*.tar.gz dist/crewly-cli_*.zip"
 : > dist/checksums.txt
 # shellcheck disable=SC2086
 for file in $FILES; do

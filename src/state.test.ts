@@ -5,19 +5,19 @@ import { join } from "node:path";
 import { defaultPermissions, load, save } from "./state.ts";
 
 const dirs: string[] = [];
-const originalHome = process.env.OPENCREW_HOME;
+const originalHome = process.env.CREWLY_HOME;
 
 function useTempHome(): string {
-  const dir = mkdtempSync(join(tmpdir(), "opencrew-state-"));
+  const dir = mkdtempSync(join(tmpdir(), "crewly-state-"));
   dirs.push(dir);
-  process.env.OPENCREW_HOME = dir;
+  process.env.CREWLY_HOME = dir;
   return dir;
 }
 
 afterEach(() => {
   while (dirs.length > 0) rmSync(dirs.pop() as string, { recursive: true, force: true });
-  if (originalHome === undefined) delete process.env.OPENCREW_HOME;
-  else process.env.OPENCREW_HOME = originalHome;
+  if (originalHome === undefined) delete process.env.CREWLY_HOME;
+  else process.env.CREWLY_HOME = originalHome;
 });
 
 describe("state", () => {
@@ -27,7 +27,7 @@ describe("state", () => {
       join(dir, "config.json"),
       JSON.stringify({
         version: 1,
-        serverUrl: "https://app.opencrew.xyz",
+        serverUrl: "https://app.crewly.space",
         deviceId: "dev_abc",
         deviceName: "go-box",
         paired: false,
