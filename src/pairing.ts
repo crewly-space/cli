@@ -54,23 +54,27 @@ export async function pairDevice(
   const deadline = new Date(created.expiresAt).getTime();
   const spinner = new Spinner(options.approvalToken ? "Approving device" : "Waiting for approval in the app");
   spinner.start();
-  while (Date.now() < deadline) {
-    const claim = await request<{ status: "pending" | "approved"; deviceId?: string }>(
-      config.serverUrl,
-      `/api/v1/devices/pairings/${encodeURIComponent(created.pairingId)}/claim`,
-      { method: "POST", body: JSON.stringify({ pollToken: created.pollToken }) },
-    );
-    if (claim.status === "approved") {
-      if (claim.deviceId !== identity.deviceId) {
-        spinner.stop();
-        throw new Error("server approved a different device identity");
+  try {
+    while (Date.now() < deadline) {
+      const claim = await request<{ status: "pending" | "approved"; deviceId?: string }>(
+        config.serverUrl,
+        `/api/v1/devices/pairings/${encodeURIComponent(created.pairingId)}/claim`,
+        { method: "POST", body: JSON.stringify({ pollToken: created.pollToken }) },
+      );
+      if (claim.status === "approved") {
+        if (claim.deviceId !== identity.deviceId) {
+          throw new Error("server approved a different device identity");
+        }
+        config.paired = true;
+        await state.save(config);
+        spinner.succeed("Device paired securely");
+        return true;
       }
-      config.paired = true;
-      await state.save(config);
-      spinner.succeed("Device paired securely");
-      return true;
+      await Bun.sleep(options.pollIntervalMs ?? 2_000);
     }
-    await Bun.sleep(options.pollIntervalMs ?? 2_000);
+  } catch (error) {
+    spinner.stop();
+    throw error;
   }
   spinner.stop();
   throw new Error("pairing code expired; run 'crewly connect' to try again");

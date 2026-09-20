@@ -12,7 +12,7 @@ import * as service from "./service/index.ts";
 import * as server from "./server.ts";
 import * as state from "./state.ts";
 import { close as closeStdin, readLine } from "./tty.ts";
-import { bold, brand, cyan, dim, green, heading, mark, red, row, stateMark, yellow, type RuntimeState } from "./ui.ts";
+import { bold, brand, clearScreen, cyan, dim, green, heading, mark, red, row, stateMark, yellow, type RuntimeState } from "./ui.ts";
 import * as workspace from "./workspace-command.ts";
 
 const VERSION = "0.1.0-dev";
@@ -99,7 +99,7 @@ async function run(args: string[]): Promise<void> {
 
 async function dashboard(): Promise<void> {
   const config = await state.load();
-  process.stdout.write("\x1b[2J\x1b[H");
+  clearScreen();
   console.log(`  ${brand("Crewly")}`);
   console.log(`  ${dim("Your agents, on your terms.")}\n`);
   if (config.installMode === "unconfigured") {
@@ -168,6 +168,16 @@ async function status(): Promise<void> {
   row("Workspaces", String(config.workspaces.length));
 }
 
+/** A short reachability probe: doctor should not hang on a dead server. */
+async function serverReachable(url: string): Promise<boolean> {
+  try {
+    const response = await fetch(new URL("/readyz", url), { signal: AbortSignal.timeout(2500) });
+    return response.ok;
+  } catch {
+    return false;
+  }
+}
+
 async function doctor(): Promise<void> {
   let dirDetail: string;
   let dirOk = true;
@@ -184,36 +194,73 @@ async function doctor(): Promise<void> {
   } catch (error) {
     configDetail = (error as Error).message;
   }
-  const checks = [
-    { name: "State directory", ok: dirOk, detail: dirDetail },
-    { name: "Configuration", ok: config !== null, detail: configDetail },
+  const urlOk = Boolean(config?.serverUrl?.startsWith("http"));
+  // Reaching the server is the whole question this command exists to answer, so
+  // check it rather than reporting that the URL is spelled like a URL.
+  const reachable = urlOk && config ? await serverReachable(config.serverUrl) : false;
+
+  interface Check { name: string; state: RuntimeState; detail: string; next?: string }
+  const checks: Check[] = [
+    { name: "State directory", state: dirOk ? "ok" : "missing", detail: dirDetail, next: "crewly init" },
+    { name: "Configuration", state: config ? "ok" : "missing", detail: configDetail, next: "crewly init" },
     {
       name: "Device identity",
-      ok: Boolean(config?.deviceId),
+      state: config?.deviceId ? "ok" : "missing",
       detail: config?.deviceId || "Not configured",
+      next: "crewly init",
     },
     {
       name: "Server URL",
-      ok: Boolean(config?.serverUrl?.startsWith("http")),
+      state: urlOk ? "ok" : "missing",
       detail: config?.serverUrl || "Not configured",
+      next: "crewly connect <server-url>",
+    },
+    {
+      name: "Server reachable",
+      state: reachable ? "ok" : "warn",
+      detail: reachable ? "Responding at /readyz" : "No response — is the server running?",
+      next: "crewly up",
+    },
+    {
+      name: "Device paired",
+      state: config?.paired ? "ok" : "warn",
+      detail: config?.paired ? "Approved by the server" : "This device is not paired yet",
+      next: "crewly connect",
+    },
+    {
+      name: "Model access",
+      state: (config?.providers.length ?? 0) > 0 ? "ok" : "warn",
+      // An agent with no provider is refused by the server, so zero providers
+      // is a finding, not a detail.
+      detail: `${config?.providers.length ?? 0} configured on this device`,
+      next: "crewly provider add",
     },
   ];
+
   heading("Crewly doctor");
-  let failed = false;
   for (const check of checks) {
-    console.log(`  ${mark(check.ok)} ${check.name.padEnd(22)} ${dim(check.detail)}`);
-    failed ||= !check.ok;
+    console.log(`  ${stateMark(check.state)} ${check.name.padEnd(22)} ${dim(check.detail)}`);
   }
   console.log(dim("\nOptional runtimes"));
   for (const runtime of detect.all()) {
     console.log(`  ${stateMark(runtimeState(runtime))} ${runtime.name.padEnd(22)} ${dim(runtime.detail)}`);
   }
-  if (failed) {
-    console.log(`\n${dim("Next:")} run 'crewly setup' to repair required configuration.`);
+
+  const broken = checks.filter((check) => check.state === "missing");
+  const incomplete = checks.filter((check) => check.state === "warn");
+  if (broken.length > 0) {
+    console.log(`\n${red(`${broken.length} required ${broken.length === 1 ? "check" : "checks"} failed.`)}`);
+    for (const check of broken) console.log(`  ${dim("Next:")} ${check.next}`);
     throw new AlreadyReported();
+  }
+  if (incomplete.length > 0) {
+    console.log(`\n${yellow("Required setup is in place, but this device cannot run an agent yet.")}`);
+    for (const check of incomplete) console.log(`  ${dim("Next:")} ${check.next}`);
+    return;
   }
   console.log(`\n${green("Everything required is ready.")}`);
 }
+
 
 async function runtimeCommand(args: string[]): Promise<void> {
   const [action, target] = args;
@@ -313,6 +360,7 @@ function help(): void {
   console.log(cmd("backup <file>", "Back up configuration without API credentials"));
   console.log(cmd("restore <file>", "Restore a configuration backup"));
   console.log(cmd("update", "Print the safe update command"));
+  console.log(cmd("version", "Print the installed version"));
   console.log();
 
   console.log(`${dim("Run")} ${bold("crewly init")} ${dim("to get started.")}`);

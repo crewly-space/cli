@@ -53,6 +53,11 @@ export function stateMark(state: RuntimeState): string {
   return dim("·");
 }
 
+/** Clears the terminal. A no-op off a terminal, where the escape is noise. */
+export function clearScreen(): void {
+  if (colorEnabled) process.stdout.write(`${ESC}[2J${ESC}[H`);
+}
+
 /** A section title with a dim rule underneath. */
 export function heading(title: string): void {
   console.log(`\n${bold(title)}`);
@@ -88,14 +93,6 @@ export class Spinner {
 
   succeed(finalMessage = this.message): void {
     this.finish(green("✓"), finalMessage);
-  }
-
-  fail(finalMessage = this.message): void {
-    this.finish(red("✗"), finalMessage);
-  }
-
-  warn(finalMessage = this.message): void {
-    this.finish(yellow("!"), finalMessage);
   }
 
   /** Clears the animated line without printing a result, so a thrown error can follow cleanly. */

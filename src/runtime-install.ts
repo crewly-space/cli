@@ -1,6 +1,6 @@
 import * as detect from "./detect.ts";
 import { select } from "./select.ts";
-import { dim, green, stateMark, type RuntimeState } from "./ui.ts";
+import { dim, green, stateMark, yellow, type RuntimeState } from "./ui.ts";
 
 /**
  * Installing the coding runtimes an agent can drive.
@@ -115,9 +115,16 @@ export function list(): void {
     console.log(`  ${stateMark(state)} ${runtime.name.padEnd(14)} ${dim(runtime.detail)}`);
   }
   const missing = INSTALLABLE.filter((item) => !detect.look(item.binary));
+  if (missing.length > 0) {
+    console.log(`\n${dim("Install with:")} crewly runtime install ${missing[0]!.id}`);
+    return;
+  }
+  // Installed is not the same as usable: saying "all installed" directly under
+  // two sign-in warnings reads as an all-clear that the rows above contradict.
+  const unauthenticated = detect.all().filter((entry) => !entry.provider && !entry.authenticated);
   console.log(
-    missing.length > 0
-      ? `\n${dim("Install with:")} crewly runtime install ${missing[0]!.id}`
-      : `\n${green("Both runtimes are installed.")}`,
+    unauthenticated.length > 0
+      ? `\n${yellow(`Installed, but not signed in: ${unauthenticated.map((entry) => entry.name).join(", ")}.`)}`
+      : `\n${green("Both runtimes are installed and signed in.")}`,
   );
 }

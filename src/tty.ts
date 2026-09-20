@@ -20,7 +20,8 @@ class StdinReader {
     return true;
   }
 
-  async readLine(): Promise<string> {
+  /** Resolves to null once the stream ends with nothing left to read. */
+  async readLine(): Promise<string | null> {
     for (;;) {
       const index = this.buffer.indexOf(0x0a);
       if (index !== -1) {
@@ -29,6 +30,7 @@ class StdinReader {
         return line.replace(/\r$/, "");
       }
       if (!(await this.fill())) {
+        if (this.buffer.length === 0) return null;
         const rest = this.buffer.toString("utf8");
         this.buffer = Buffer.alloc(0);
         return rest;
@@ -48,9 +50,26 @@ class StdinReader {
 
 export const stdin = new StdinReader();
 
+/**
+ * Signals that a question had no one to answer it. End of input is not consent:
+ * without this, a closed stdin answers every prompt with its default and walks
+ * an unattended `crewly` through the whole install.
+ */
+export class NoInputError extends Error {
+  constructor() {
+    super("crewly needs a terminal to ask that question. Run it in one, or pass --yes to accept the defaults.");
+    this.name = "NoInputError";
+  }
+}
+
 export async function readLine(prompt = ""): Promise<string> {
   if (prompt) process.stdout.write(prompt);
-  return (await stdin.readLine()).trim();
+  const line = await stdin.readLine();
+  if (line === null) {
+    if (prompt) process.stdout.write("\n");
+    throw new NoInputError();
+  }
+  return line.trim();
 }
 
 export async function readLineDefault(label: string, value: string): Promise<string> {
