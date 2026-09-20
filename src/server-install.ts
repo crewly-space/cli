@@ -49,10 +49,19 @@ function releaseUrl(): string {
     : `https://github.com/${REPOSITORY}/releases/download/${version}`;
 }
 
-async function download(url: string): Promise<Uint8Array> {
+async function download(url: string, asset?: string): Promise<Uint8Array> {
   const response = await fetch(url);
-  if (!response.ok) throw new Error(`download of ${url} failed: HTTP ${response.status}`);
-  return new Uint8Array(await response.arrayBuffer());
+  if (response.ok) return new Uint8Array(await response.arrayBuffer());
+  // A 404 here is not a broken link: the URL is built from the platform, so it
+  // means the latest release publishes nothing under that name. Saying "HTTP
+  // 404" sends people looking for a bug in their network instead.
+  if (response.status === 404) {
+    throw new Error(
+      `the latest Crewly server release does not publish ${asset ?? url.split("/").pop()}. ` +
+        `Check https://github.com/${REPOSITORY}/releases, or set CREWLY_VERSION to a release that has it.`,
+    );
+  }
+  throw new Error(`download of ${url} failed: HTTP ${response.status}`);
 }
 
 // Windows ships bsdtar in System32, which reads zips. Anything else named `tar`
@@ -83,8 +92,8 @@ export async function install(options: { baseUrl?: string } = {}): Promise<void>
   const root = await state.ensureDir();
   const scratch = await mkdtemp(join(root, ".server-download-"));
   try {
-    const bytes = await download(`${baseUrl}/${asset}`);
-    const listing = new TextDecoder().decode(await download(`${baseUrl}/checksums.txt`));
+    const bytes = await download(`${baseUrl}/${asset}`, asset);
+    const listing = new TextDecoder().decode(await download(`${baseUrl}/checksums.txt`, "checksums.txt"));
     const actual = createHash("sha256").update(bytes).digest("hex");
     if (actual !== expectedChecksum(listing, asset)) {
       throw new Error(`checksum for ${asset} did not match; refusing to install it`);

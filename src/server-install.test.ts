@@ -157,7 +157,7 @@ describe("install", () => {
     const archive = buildArchive();
     const baseUrl = serveRelease({ name: "some-other-asset.zip", bytes: archive.bytes }, sha256(archive.bytes));
 
-    await expect(install({ baseUrl })).rejects.toThrow(/404|download/i);
+    await expect(install({ baseUrl })).rejects.toThrow(/does not publish crewly-server_/);
     expect(existsSync(managedDir())).toBe(false);
   });
 
@@ -174,3 +174,4 @@ describe("install", () => {
     expect(existsSync(join(managedDir(), serverFile))).toBe(true);
   });
 });
+
