@@ -53,7 +53,7 @@ async function selectInteractive<T>(
   let active = defaultIndex;
   process.stdout.write(`${title}\n`);
 
-  const footer = dim("  ↑/↓ move · Enter choose · q quit");
+  const footer = dim("  ↑/↓ or j/k move · 1-9 jump · Enter choose · q quit");
   const draw = (): void => {
     for (const [index, option] of options.entries()) {
       process.stdout.write(`${renderRow(option, index, index === active)}\n`);
@@ -122,7 +122,7 @@ async function selectNumbered<T>(
   for (;;) {
     const answer = await readLine(`Choose [${defaultIndex + 1}]: `);
     if (answer === "") return options[defaultIndex]!.value;
-    const index = Number.parseInt(answer, 10) - 1;
+    const index = /^\d+$/.test(answer) ? Number(answer) - 1 : -1;
     if (Number.isInteger(index) && index >= 0 && index < options.length) {
       return options[index]!.value;
     }

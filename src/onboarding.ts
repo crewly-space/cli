@@ -10,7 +10,7 @@ import * as service from "./service/index.ts";
 import * as state from "./state.ts";
 import { select } from "./select.ts";
 import { readLine, readLineDefault, readSecret } from "./tty.ts";
-import { green, heading, yellow } from "./ui.ts";
+import { green, heading, nextCommand, yellow } from "./ui.ts";
 
 type Mode = "server" | "server-app" | "connect";
 
@@ -71,14 +71,15 @@ export async function init(args: string[], entrypoint = import.meta.path): Promi
   if (paired) await startDaemon(entrypoint);
 
   console.log(`\n${green("✓")} Crewly is ready at ${config.serverUrl}`);
+  nextCommand("crewly doctor", "Check the connection, model access, and local runtimes");
   if (mode === "server-app" && !options.noOpen) await server.open(config);
 }
 
 async function chooseMode(): Promise<Mode> {
   return await select<Mode>("\nWhat do you want to run here?", [
-    { value: "server-app", label: "Server + app", hint: "(recommended)" },
-    { value: "server", label: "Server only", hint: "(headless API)" },
-    { value: "connect", label: "Connect this device to an existing server" },
+    { value: "server-app", label: "Server + app", hint: "recommended · opens in your browser" },
+    { value: "server", label: "Server only", hint: "API without the web app" },
+    { value: "connect", label: "Connect this device", hint: "use an existing server" },
   ]);
 }
 
@@ -209,41 +210,22 @@ async function configureProvider(config: state.Config, token: string, options: O
 }
 
 async function chooseProvider(): Promise<string> {
-  for (;;) {
-    const answer = await select("\nHow should agents access AI models?", [
-      { value: "1", label: "Crewly model subscription", hint: "(coming with hosted gateway)" },
-      { value: "2", label: "Link an Crewly account", hint: "(coming with hosted gateway)" },
-      { value: "3", label: "Bring your own API key" },
-      { value: "4", label: "Use a detected local provider" },
-      { value: "5", label: "Configure later" },
-    ], 4);
-    if (answer === "5") return "later";
-    if (answer === "1" || answer === "2") {
-      console.log(`${yellow("!")} That option is not live yet. Choose your own key or configure later.`);
-      continue;
-    }
-    if (answer === "4") {
-      const available: Array<{ kind: string; label: string }> = [];
-      if (localProvider.claudeSubscriptionAvailable()) available.push({ kind: "claude-subscription", label: "Claude Subscription" });
-      if (await localProvider.ollamaAvailable()) available.push({ kind: "ollama", label: "Ollama" });
-      if (available.length === 1) return available[0]!.kind;
-      if (available.length > 1) {
-        return await select(
-          "\nWhich local provider?",
-          available.map((provider) => ({ value: provider.kind, label: provider.label })),
-        );
-      }
-      console.log(`${yellow("!")} No authenticated local provider was detected. Run claude login or configure later.`);
-      continue;
-    }
-    return await select("\nWhich provider?", [
-      { value: "anthropic", label: "Anthropic" },
-      { value: "openai", label: "OpenAI" },
-      { value: "openrouter", label: "OpenRouter" },
-      { value: "deepseek", label: "DeepSeek" },
-      { value: "openai-compatible", label: "OpenAI-compatible" },
-    ]);
+  const available = [] as Array<{ value: string; label: string; hint?: string }>;
+  if (localProvider.claudeSubscriptionAvailable()) {
+    available.push({ value: "claude-subscription", label: "Claude Subscription", hint: "signed in on this device" });
   }
+  if (await localProvider.ollamaAvailable()) {
+    available.push({ value: "ollama", label: "Ollama", hint: "running on this device" });
+  }
+  available.push(
+    { value: "anthropic", label: "Anthropic", hint: "API key" },
+    { value: "openai", label: "OpenAI", hint: "API key" },
+    { value: "openrouter", label: "OpenRouter", hint: "API key" },
+    { value: "deepseek", label: "DeepSeek", hint: "API key" },
+    { value: "openai-compatible", label: "OpenAI-compatible", hint: "API key + URL" },
+    { value: "later", label: "Configure later", hint: "add a provider in the app" },
+  );
+  return await select("\nHow should agents access AI models?", available, available.length - 1);
 }
 
 async function promptPassword(): Promise<string> {

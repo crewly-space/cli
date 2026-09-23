@@ -69,6 +69,19 @@ export function row(label: string, value: string, pad = 22): void {
   console.log(`  ${dim(label.padEnd(pad))} ${value}`);
 }
 
+/** Small terminal masthead shared by the home screen and help. */
+export function masthead(context: string): void {
+  console.log();
+  console.log(`  ${brand("crewly")} ${dim("/ " + context)}`);
+  console.log(`  ${dim("─".repeat(38))}`);
+}
+
+/** A copyable command with a short reason to run it. */
+export function nextCommand(command: string, reason: string): void {
+  console.log(`  ${dim("$")} ${cyan(command)}`);
+  console.log(`    ${dim(reason)}`);
+}
+
 const FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 
 /**

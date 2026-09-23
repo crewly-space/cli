@@ -12,7 +12,7 @@ import * as service from "./service/index.ts";
 import * as server from "./server.ts";
 import * as state from "./state.ts";
 import { close as closeStdin, readLine } from "./tty.ts";
-import { bold, brand, clearScreen, cyan, dim, green, heading, mark, red, row, stateMark, yellow, type RuntimeState } from "./ui.ts";
+import { bold, brand, clearScreen, cyan, dim, green, heading, mark, masthead, nextCommand, red, row, stateMark, yellow, type RuntimeState } from "./ui.ts";
 import * as workspace from "./workspace-command.ts";
 
 const VERSION = "0.1.0-dev";
@@ -100,23 +100,42 @@ async function run(args: string[]): Promise<void> {
 async function dashboard(): Promise<void> {
   const config = await state.load();
   clearScreen();
-  console.log(`  ${brand("Crewly")}`);
-  console.log(`  ${dim("Your agents, on your terms.")}\n`);
+  masthead("LOCAL CONTROL");
   if (config.installMode === "unconfigured") {
-    console.log(`  ${cyan("Press Enter")} ${dim("to begin, or q to quit.")}`);
+    console.log(`\n  ${bold("No workspace on this device yet.")}`);
+    console.log(`  ${dim("Set up a server or connect this computer to one.")}\n`);
+    nextCommand("crewly init", "Guided setup for a server, app, or remote connection");
+    if (!process.stdin.isTTY) return;
+    console.log(`\n  ${dim("Press Enter to start setup · q to quit")}`);
     const choice = await readLine("");
     if (choice.toLowerCase() === "q") return;
     return init([]);
   }
-  row("Device", config.deviceName);
-  row("Pairing", config.paired ? green("Connected") : yellow("Not paired"));
-  row("Providers", String(config.providers.length));
-  row("Workspaces", String(config.workspaces.length));
-  console.log();
+
+  const hostsServer = config.installMode !== "connect";
+  const localServer = hostsServer ? await server.running() : null;
+  const bridge = await daemon.running(state.dir());
+  heading("Connection");
+  row("Server", hostsServer
+    ? localServer?.running ? green(`running · ${config.serverUrl}`) : yellow(`stopped · ${config.serverUrl}`)
+    : cyan(config.serverUrl), 16);
+  row("Device", config.deviceName, 16);
+  row("Pairing", config.paired ? green("connected") : yellow("not paired"), 16);
+  row("Bridge", bridge.running ? green("running") : yellow("stopped"), 16);
+  row("Providers", String(config.providers.length), 16);
+  row("Workspaces", String(config.workspaces.length), 16);
+
+  heading("Coding runtimes");
   for (const runtime of detect.all()) {
-    console.log(`  ${stateMark(runtimeState(runtime))} ${runtime.name.padEnd(20)} ${dim(runtime.detail)}`);
+    console.log(`  ${stateMark(runtimeState(runtime))} ${runtime.name.padEnd(21)} ${dim(runtime.detail)}`);
   }
-  console.log(`\n  ${dim("init · up · status · provider · workspace · doctor · logs")}`);
+  heading("Next");
+  if (hostsServer && !localServer?.running) nextCommand("crewly up", "Start the local server and open the app");
+  else if (!config.paired) nextCommand("crewly connect", "Approve this device on the server");
+  else if (config.providers.length === 0) nextCommand("crewly provider add", "Give your agents model access");
+  else if (!bridge.running) nextCommand("crewly start", "Start the local device bridge");
+  else nextCommand(hostsServer ? "crewly open" : "crewly status", hostsServer ? "Open your workspace" : "Review this device's connection");
+  console.log(`\n  ${dim("All commands: crewly help")}`);
 }
 
 async function connect(args: string[]): Promise<void> {
@@ -154,10 +173,13 @@ async function connect(args: string[]): Promise<void> {
 async function status(): Promise<void> {
   const config = await state.load();
   const { running, pid } = await daemon.running(state.dir());
-  const serverState = await server.running();
-  console.log(`${brand("Crewly")} ${VERSION} ${dim(`(${detect.platform()})`)}`);
+  const serverState = config.installMode === "connect" ? null : await server.running();
+  masthead("STATUS");
+  row("Version", `${VERSION} ${dim(`(${detect.platform()})`)}`);
   row("Mode", config.installMode);
-  row("Server", `${serverState.running ? green(`running (pid ${serverState.pid})`) : dim("stopped")} · ${config.serverUrl}`);
+  row("Server", serverState
+    ? `${serverState.running ? green(`running (pid ${serverState.pid})`) : dim("stopped")} · ${config.serverUrl}`
+    : `${cyan(config.serverUrl)} ${dim("(remote)")}`);
   row("Agentd", running ? green(`running (pid ${pid})`) : dim("stopped"));
   row("Device", config.deviceId ? `${config.deviceName} · ${dim(config.deviceId)}` : yellow("not set up"));
   row("Paired", config.paired ? green("yes") : yellow("no"));
@@ -327,43 +349,37 @@ function runtimeState(runtime: detect.Runtime): RuntimeState {
 
 function help(): void {
   const cmd = (name: string, description: string): string =>
-    `  ${bold(name.padEnd(26))} ${dim(description)}`;
+    `  ${cyan(name.padEnd(26))} ${description}`;
 
-  console.log(brand("Crewly"));
-  console.log(dim("Your local agent bridge\n"));
-  console.log(bold("Usage"));
-  console.log(`  ${dim("crewly")} ${bold("<command>")} ${dim("[options]")}\n`);
+  masthead("COMMAND REFERENCE");
+  console.log(`\n  ${dim("Usage")}  ${bold("crewly <command> [options]")}`);
+  console.log(`  ${dim("Tip")}    ${bold("crewly")} ${dim("shows live status and the next useful command")}`);
 
-  console.log(bold("Get started"));
-  console.log(cmd("init", "Set up a server, app, and model access"));
+  heading("Start here");
+  console.log(cmd("init", "Guided setup"));
   console.log(cmd("connect [server-url]", "Pair this computer with a server"));
-  console.log(cmd("doctor", "Check setup and optional runtimes"));
-  console.log(cmd("status", "Show server, device, and provider state"));
   console.log(cmd("up | down", "Start or stop the local server"));
   console.log(cmd("open", "Open the app in your browser"));
-  console.log();
+  console.log(cmd("doctor", "Check setup and get repair steps"));
+  console.log(cmd("status", "Show server and device state"));
 
-  console.log(bold("Control the daemon"));
+  heading("Device and server");
   console.log(cmd("start | stop | restart", "Manage the local device daemon"));
   console.log(cmd("server <action>", "start, stop, restart, status, logs"));
   console.log(cmd("logs [--all]", "Show recent daemon logs"));
-  console.log();
 
-  console.log(bold("Providers and workspaces"));
+  heading("Agents and tools");
   console.log(cmd("provider <action>", "add, list, test"));
   console.log(cmd("workspace <action>", "add [path], list"));
   console.log(cmd("agentd <action>", "install, status"));
   console.log(cmd("runtime <action>", "list, install [claude-code | codex]"));
-  console.log();
 
-  console.log(bold("Manage"));
+  heading("Manage");
   console.log(cmd("backup <file>", "Back up configuration without API credentials"));
   console.log(cmd("restore <file>", "Restore a configuration backup"));
   console.log(cmd("update", "Print the safe update command"));
   console.log(cmd("version", "Print the installed version"));
-  console.log();
-
-  console.log(`${dim("Run")} ${bold("crewly init")} ${dim("to get started.")}`);
+  console.log(`\n  ${dim("Start with")} ${cyan("crewly init")}${dim(".")}`);
 }
 
 await main();
