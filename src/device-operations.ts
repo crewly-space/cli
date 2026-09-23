@@ -1,12 +1,37 @@
 import { AgentdRequestSchema, ChatRequestSchema, type AgentdRequest, type ChatResponse, type ModelInfo } from "./protocol/index.ts";
 import { ClaudeSubscription } from "./provider/claude-subscription.ts";
+import * as localProvider from "./provider/commands.ts";
+import * as detect from "./detect.ts";
+import * as stateStore from "./state.ts";
 import type * as state from "./state.ts";
+import { deviceCapabilities } from "./capabilities.ts";
 
-export async function handleDeviceRequest(raw: unknown, config: state.Config): Promise<{ requestId: string; ok: true; result: Record<string, unknown> } | { requestId: string; ok: false; error: { code: string; message: string } }> {
+/**
+ * What the device checks before it enables a provider. Injected so tests do
+ * not depend on whether this machine happens to have Claude Code signed in.
+ */
+export interface DeviceChecks {
+  claude: () => { installed: boolean; authenticated: boolean };
+  ollamaAvailable: (baseUrl?: string) => Promise<boolean>;
+  save: (config: state.Config) => Promise<void>;
+  capabilities: (config: state.Config) => Record<string, unknown>;
+}
+
+const defaultChecks: DeviceChecks = {
+  claude: () => {
+    const runtime = detect.all().find((candidate) => candidate.id === "claude-subscription");
+    return { installed: Boolean(runtime?.installed), authenticated: Boolean(runtime?.authenticated) };
+  },
+  ollamaAvailable: (baseUrl) => localProvider.ollamaAvailable(baseUrl),
+  save: (config) => stateStore.save(config),
+  capabilities: deviceCapabilities,
+};
+
+export async function handleDeviceRequest(raw: unknown, config: state.Config, checks: DeviceChecks = defaultChecks): Promise<{ requestId: string; ok: true; result: Record<string, unknown> } | { requestId: string; ok: false; error: { code: string; message: string } }> {
   const parsed = AgentdRequestSchema.safeParse(raw);
   if (!parsed.success) return { requestId: requestIdFrom(raw), ok: false, error: { code: "invalid_request", message: "invalid device request" } };
   try {
-    return { requestId: parsed.data.requestId, ok: true, result: await dispatch(parsed.data, config) };
+    return { requestId: parsed.data.requestId, ok: true, result: await dispatch(parsed.data, config, checks) };
   } catch (error) {
     return { requestId: parsed.data.requestId, ok: false, error: {
       code: error instanceof DeviceOperationError ? error.code : "device_error",
@@ -19,15 +44,23 @@ class DeviceOperationError extends Error {
   constructor(public readonly code: string, message: string) { super(message); }
 }
 
-async function dispatch(request: AgentdRequest, config: state.Config): Promise<Record<string, unknown>> {
+async function dispatch(request: AgentdRequest, config: state.Config, checks: DeviceChecks): Promise<Record<string, unknown>> {
   const kind = typeof request.payload.kind === "string" ? request.payload.kind : "";
+  if (request.operation === "provider.enable") return enableProvider(kind, config, checks);
   const provider = config.providers.find((candidate) => candidate.kind === kind && candidate.localOnly);
   if ((request.operation === "provider.chat" || request.operation === "provider.models") && !provider) {
     throw new DeviceOperationError("provider_unavailable", `${kind || "requested"} provider is not enabled on this device`);
   }
   if (request.operation === "provider.chat") {
     const chat = ChatRequestSchema.parse(request.payload.request);
-    if (kind === "claude-subscription") return { response: await chatWithClaude(chat) };
+    if (kind === "claude-subscription") {
+      // Checked before running so a lapsed sign-in is reported as that, not
+      // as whatever the Claude executable prints on its way out.
+      const claude = checks.claude();
+      if (!claude.installed) throw new DeviceOperationError("runtime_missing", "Claude Code is not installed on this device");
+      if (!claude.authenticated) throw new DeviceOperationError("provider_sign_in_expired", "Claude Code is not signed in on this device; run claude login");
+      return { response: await chatWithClaude(chat) };
+    }
     if (kind === "ollama") return { response: await chatWithOllama(chat, provider?.baseUrl) };
     throw new DeviceOperationError("provider_unavailable", `unsupported local provider ${kind}`);
   }
@@ -37,6 +70,36 @@ async function dispatch(request: AgentdRequest, config: state.Config): Promise<R
     throw new DeviceOperationError("provider_unavailable", `unsupported local provider ${kind}`);
   }
   throw new DeviceOperationError("operation_unavailable", `${request.operation} is not implemented by this device version`);
+}
+
+/*
+ * Enables a device-backed provider because the server asked, which it does
+ * when this device's owner connects one from the app.
+ *
+ * Nothing secret is involved: the sign-in stays with Claude Code (or there is
+ * none, for Ollama), and all this does is add the provider to the device's
+ * own configuration -- the same thing `crewly` onboarding does -- once the
+ * device has checked it can actually serve it.
+ */
+async function enableProvider(kind: string, config: state.Config, checks: DeviceChecks): Promise<Record<string, unknown>> {
+  if (kind !== "claude-subscription" && kind !== "ollama") {
+    throw new DeviceOperationError("provider_unavailable", `${kind || "that"} provider cannot run on a device`);
+  }
+  if (kind === "claude-subscription") {
+    const claude = checks.claude();
+    if (!claude.installed) throw new DeviceOperationError("runtime_missing", "Claude Code is not installed on this device");
+    if (!claude.authenticated) throw new DeviceOperationError("provider_sign_in_expired", "Claude Code is not signed in on this device; run claude login");
+  } else if (!await checks.ollamaAvailable()) {
+    throw new DeviceOperationError("provider_unavailable", "Ollama is not running on this device");
+  }
+  if (!localProvider.has(config, kind)) {
+    config.providers.push(localProvider.create(kind, kind === "claude-subscription" ? "Claude Subscription" : "Ollama", {
+      localOnly: true,
+      ...(kind === "ollama" ? { baseUrl: "http://127.0.0.1:11434" } : {}),
+    }));
+    await checks.save(config);
+  }
+  return { enabled: true, capabilities: checks.capabilities(config) };
 }
 
 async function chatWithClaude(request: ReturnType<typeof ChatRequestSchema.parse>): Promise<ChatResponse> {
