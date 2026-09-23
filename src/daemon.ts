@@ -4,6 +4,7 @@ import { readFile, unlink } from "node:fs/promises";
 import { join } from "node:path";
 import * as detect from "./detect.ts";
 import { handleDeviceRequest } from "./device-operations.ts";
+import { deviceCapabilities } from "./capabilities.ts";
 import { isNotFound, writePrivate } from "./fsx.ts";
 import * as identity from "./identity.ts";
 import { isWindows } from "./paths.ts";
@@ -136,11 +137,7 @@ async function connectOnce(
       if (socket.readyState !== WebSocket.OPEN) return;
       socket.send(JSON.stringify({
         type: "heartbeat",
-        capabilities: {
-          providers: latest.providers.map(({ id, kind, label, localOnly }) => ({ id, kind, label, localOnly })),
-          workspaces: latest.workspaces.map(({ id, name }) => ({ id, name })),
-          runtimes: detect.all().filter((runtime) => runtime.installed).map(({ id, name, authenticated: ready }) => ({ id, name, authenticated: ready })),
-        },
+        capabilities: deviceCapabilities(latest),
       }));
     };
 
