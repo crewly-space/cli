@@ -10,6 +10,8 @@ import * as identity from "./identity.ts";
 import { isWindows } from "./paths.ts";
 import * as state from "./state.ts";
 import { dim, green } from "./ui.ts";
+import { CLI_VERSION } from "./version.ts";
+import { PROTOCOL_VERSION } from "./protocol/index.ts";
 
 export async function start(entrypoint: string): Promise<void> {
   const dir = await state.ensureDir();
@@ -137,6 +139,8 @@ async function connectOnce(
       if (socket.readyState !== WebSocket.OPEN) return;
       socket.send(JSON.stringify({
         type: "heartbeat",
+        protocolVersion: PROTOCOL_VERSION,
+        clientVersion: CLI_VERSION,
         capabilities: deviceCapabilities(latest),
       }));
     };
@@ -152,6 +156,9 @@ async function connectOnce(
           deviceId: deviceIdentity.deviceId,
           timestamp,
           nonce: message.nonce,
+          protocolVersion: PROTOCOL_VERSION,
+          clientVersion: CLI_VERSION,
+          capabilities: { "agentd.heartbeat.v1": true, "agentd.capabilities.v1": true },
           signature: deviceIdentity.sign(signaturePayload(deviceIdentity.deviceId, timestamp, message.nonce)),
         }));
         return;
@@ -161,6 +168,10 @@ async function connectOnce(
         console.log(`${new Date().toISOString()} connected to ${config.serverUrl}`);
         void sendHeartbeat();
         heartbeat = setInterval(() => void sendHeartbeat(), 30_000);
+        return;
+      }
+      if (message.type === "protocol.error") {
+        socket.close(4003, typeof message.message === "string" ? message.message : "protocol incompatible");
         return;
       }
       if (authenticated && typeof message.requestId === "string" && typeof message.operation === "string") {

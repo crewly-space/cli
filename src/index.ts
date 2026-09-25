@@ -13,9 +13,10 @@ import * as server from "./server.ts";
 import * as state from "./state.ts";
 import { close as closeStdin, readLine } from "./tty.ts";
 import { bold, brand, clearScreen, cyan, dim, green, heading, mark, masthead, nextCommand, red, row, stateMark, yellow, type RuntimeState } from "./ui.ts";
+import { CLI_VERSION } from "./version.ts";
 import * as workspace from "./workspace-command.ts";
 
-const VERSION = "0.1.0-dev";
+const VERSION = CLI_VERSION;
 
 /** Signals that the command already printed a useful explanation. */
 class AlreadyReported extends Error {}
