@@ -33,6 +33,11 @@ jobs:
       - name: Install
         run: bun install
 
+      - name: Verify release version
+        env:
+          TAG: ${{ github.event.inputs.tag || github.ref_name }}
+        run: test "$TAG" = "v$(node -p "require('./package.json').version")"
+
       # Vendored protocol must match its owner before anything ships.
       - name: Check vendored code and tests
         run: |

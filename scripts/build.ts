@@ -41,7 +41,7 @@ for (const { target, asset, binary } of selected) {
   process.stdout.write(`  building ${target.padEnd(18)} `);
   const child = Bun.spawn(
     [
-      "bun",
+      process.execPath,
       "build",
       join(import.meta.dir, "..", "src", "index.ts"),
       "--compile",
