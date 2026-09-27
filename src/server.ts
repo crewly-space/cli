@@ -69,7 +69,11 @@ export async function start(input?: state.Config): Promise<void> {
   const dir = await state.ensureDir();
   const logFd = openSync(join(dir, "server.log"), "a", 0o600);
   try {
+    // The server is a compiled Bun executable, and Bun applies BUN_OPTIONS to it at
+    // startup: an `--origin` meant for someone's Bun tooling stops it from listening.
+    const { BUN_OPTIONS: _, ...env } = process.env;
     const child = spawn(executable, args, {
+      env,
       detached: true,
       stdio: ["ignore", logFd, logFd],
       windowsHide: true,
