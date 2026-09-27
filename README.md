@@ -29,13 +29,15 @@ npm run build     # native binary
 server + app mode, the `web/` folder). The CLI looks for them in this order:
 
 1. `CREWLY_SERVER_BIN` / `CREWLY_WEB_DIR`, if set
-2. next to the `crewly` executable (the layout the installer produces)
+2. next to the `crewly` executable (the layout older installers produced)
 3. `<config dir>/crewly/server-bin/`, where the CLI keeps a copy it downloaded
 
-If neither an override nor a copy exists, the CLI downloads the server release
-for this platform, verifies it against the release's `checksums.txt`, and
-unpacks it into `server-bin/`. That is what happens under `bun run dev`, where
-the executable is Bun itself. `CREWLY_VERSION` pins a release tag and
+The installer ships only the CLI, so a device that just connects to a server
+never carries one. If neither an override nor a copy exists, the CLI downloads
+the server release for this platform, verifies it against the release's
+`checksums.txt`, and unpacks it into `server-bin/` when `init`, `up` or
+`server start` first needs it. That is also what happens under `bun run dev`,
+where the executable is Bun itself. `CREWLY_VERSION` pins a release tag and
 `CREWLY_RELEASE_BASE_URL` points the download at a mirror.
 
 An already downloaded server is not refreshed; delete `server-bin/` to fetch
