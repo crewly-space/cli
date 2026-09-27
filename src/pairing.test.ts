@@ -2,6 +2,7 @@ import { afterEach, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { generateKeyPairSync } from "node:crypto";
 import { websocketUrl, signaturePayload } from "./daemon.ts";
 import type { Identity } from "./identity.ts";
 import { pairDevice } from "./pairing.ts";
@@ -18,6 +19,7 @@ test("pairs with an authenticated approval and persists the result", async () =>
   temporaryHome = await mkdtemp(join(tmpdir(), "crewly-pairing-"));
   process.env.CREWLY_HOME = temporaryHome;
   let approved = false;
+  const serverPublicKey = generateKeyPairSync('ed25519').publicKey.export({ type: 'spki', format: 'der' }).subarray(-32).toString('base64url');
   const server = Bun.serve({
     port: 0,
     fetch(request) {
@@ -25,6 +27,7 @@ test("pairs with an authenticated approval and persists the result", async () =>
       if (url.pathname === "/api/v1/devices/pairings") return Response.json({
         pairingId: "pair-1", pollToken: "poll-token", userCode: "A1B2C3D4",
         verificationUrl: `${url.origin}/?pair=A1B2C3D4`, expiresAt: new Date(Date.now() + 60_000).toISOString(),
+        serverPublicKey,
       }, { status: 201 });
       if (url.pathname.endsWith("/approve")) {
         expect(request.headers.get("authorization")).toBe("Bearer owner-token");
@@ -32,7 +35,7 @@ test("pairs with an authenticated approval and persists the result", async () =>
         return Response.json({ status: "approved", deviceId: "dev_0123456789abcdef0123" });
       }
       if (url.pathname.endsWith("/claim")) {
-        return Response.json({ status: approved ? "approved" : "pending", deviceId: "dev_0123456789abcdef0123" });
+        return Response.json({ status: approved ? "approved" : "pending", deviceId: "dev_0123456789abcdef0123", serverPublicKey });
       }
       return new Response("not found", { status: 404 });
     },
@@ -50,6 +53,7 @@ test("pairs with an authenticated approval and persists the result", async () =>
     };
     expect(await pairDevice(config, identity, { approvalToken: "owner-token", noOpen: true, pollIntervalMs: 1 })).toBe(true);
     expect((await state.load()).paired).toBe(true);
+    expect((await state.load()).serverPublicKey).toBe(serverPublicKey);
   } finally {
     server.stop(true);
   }

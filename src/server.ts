@@ -7,6 +7,7 @@ import { isWindows } from "./paths.ts";
 import { SERVER_BINARY, install, managedDir } from "./server-install.ts";
 import * as state from "./state.ts";
 import { dim, green, Spinner } from "./ui.ts";
+import { safeBrowserUrl } from "./urls.ts";
 
 /** An override, else the release layout beside the CLI, else the copy the CLI downloaded itself. */
 export function binaryPath(): string {
@@ -163,6 +164,7 @@ export async function open(input?: state.Config): Promise<void> {
 }
 
 export async function openUrl(url: string): Promise<void> {
+  url = safeBrowserUrl(url);
   const command = process.platform === "win32"
     ? ["cmd.exe", "/c", "start", "", url]
     : process.platform === "darwin"

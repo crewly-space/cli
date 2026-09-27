@@ -10,6 +10,7 @@ interface PairingCreated {
   userCode: string;
   verificationUrl: string;
   expiresAt: string;
+  serverPublicKey: string;
 }
 
 interface PairOptions {
@@ -33,6 +34,7 @@ export async function pairDevice(
       platform: detect.platform(),
     }),
   });
+  if (Buffer.from(created.serverPublicKey, 'base64').length !== 32) throw new Error('server returned an invalid identity key');
 
   console.log(`\n${dim("Pair this device with code")} ${bold(created.userCode)}`);
   console.log(`${dim("Open")} ${cyan(created.verificationUrl)}`);
@@ -56,7 +58,7 @@ export async function pairDevice(
   spinner.start();
   try {
     while (Date.now() < deadline) {
-      const claim = await request<{ status: "pending" | "approved"; deviceId?: string }>(
+      const claim = await request<{ status: "pending" | "approved"; deviceId?: string; serverPublicKey?: string }>(
         config.serverUrl,
         `/api/v1/devices/pairings/${encodeURIComponent(created.pairingId)}/claim`,
         { method: "POST", body: JSON.stringify({ pollToken: created.pollToken }) },
@@ -65,7 +67,9 @@ export async function pairDevice(
         if (claim.deviceId !== identity.deviceId) {
           throw new Error("server approved a different device identity");
         }
+        if (claim.serverPublicKey !== created.serverPublicKey) throw new Error('server identity changed during pairing');
         config.paired = true;
+        config.serverPublicKey = created.serverPublicKey;
         await state.save(config);
         spinner.succeed("Device paired securely");
         return true;

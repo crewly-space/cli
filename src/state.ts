@@ -46,6 +46,8 @@ export interface Config {
   deviceId: string;
   deviceName: string;
   paired: boolean;
+  /** Raw Ed25519 key learned during pairing and used to authenticate agentd's server. */
+  serverPublicKey?: string;
   workspaces: Workspace[];
   providers: Provider[];
   sessions: Session[];

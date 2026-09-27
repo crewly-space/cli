@@ -11,6 +11,7 @@ import * as state from "./state.ts";
 import { select } from "./select.ts";
 import { readLine, readLineDefault, readSecret } from "./tty.ts";
 import { green, heading, nextCommand, yellow } from "./ui.ts";
+import { secureHttpUrl } from "./urls.ts";
 
 type Mode = "server" | "server-app" | "connect";
 
@@ -58,7 +59,7 @@ export async function init(args: string[], entrypoint = import.meta.path): Promi
   if (token) await configureProvider(config, token, options);
 
   const deviceIdentity = await identity.loadOrCreate(await state.ensureDir());
-  const alreadyPaired = config.paired && config.deviceId === deviceIdentity.deviceId;
+  const alreadyPaired = config.paired && Boolean(config.serverPublicKey) && config.deviceId === deviceIdentity.deviceId;
   config.deviceId = deviceIdentity.deviceId;
   config.deviceName = options.name ?? hostname();
   await state.save(config);
@@ -95,6 +96,7 @@ async function configureConnection(config: state.Config, options: Options, entry
   config.deviceId = id.deviceId;
   config.deviceName = options.name ?? hostname();
   config.paired = false;
+  config.serverPublicKey = undefined;
   await state.save(config);
   console.log(`\n${green("✓")} Device identity created: ${config.deviceId}`);
   console.log(`${green("✓")} Server saved: ${config.serverUrl}`);
@@ -302,9 +304,5 @@ function formatHost(host: string): string {
 }
 
 function validateUrl(value: string): void {
-  let parsed: URL;
-  try { parsed = new URL(value); } catch { throw new Error("server URL must be a valid http or https address"); }
-  if (!["http:", "https:"].includes(parsed.protocol) || !parsed.host) {
-    throw new Error("server URL must be a valid http or https address");
-  }
+  secureHttpUrl(value);
 }

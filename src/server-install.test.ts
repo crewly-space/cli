@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { createHash } from "node:crypto";
+import { createHash, generateKeyPairSync, sign } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -65,18 +65,25 @@ function sha256(bytes: Uint8Array): string {
 }
 
 /** Serves an archive and a checksums.txt the way a GitHub release does. */
-function serveRelease(archive: { name: string; bytes: Uint8Array }, checksum: string): string {
+function serveRelease(archive: { name: string; bytes: Uint8Array }, checksum: string): { baseUrl: string; publicKey: string } {
+  const keys = generateKeyPairSync('ed25519');
+  const listing = `${checksum}  ${archive.name}\n`;
+  const signature = sign(null, Buffer.from(listing), keys.privateKey);
   const server = Bun.serve({
     port: 0,
     fetch(request) {
       const path = new URL(request.url).pathname;
       if (path === `/${archive.name}`) return new Response(archive.bytes);
-      if (path === "/checksums.txt") return new Response(`${checksum}  ${archive.name}\n`);
+      if (path === "/checksums.txt") return new Response(listing);
+      if (path === "/checksums.txt.sig") return new Response(signature);
       return new Response("not found", { status: 404 });
     },
   });
   servers.push(server);
-  return `http://127.0.0.1:${server.port}`;
+  return {
+    baseUrl: `http://127.0.0.1:${server.port}`,
+    publicKey: keys.publicKey.export({ type: 'spki', format: 'der' }).subarray(-32).toString('base64url'),
+  };
 }
 
 describe("assetName", () => {
@@ -135,9 +142,9 @@ describe("install", () => {
   test("downloads, verifies and unpacks the server and the app into the managed directory", async () => {
     useTempHome();
     const archive = buildArchive();
-    const baseUrl = serveRelease(archive, sha256(archive.bytes));
+    const release = serveRelease(archive, sha256(archive.bytes));
 
-    await install({ baseUrl });
+    await install(release);
 
     expect(existsSync(join(managedDir(), serverFile))).toBe(true);
     expect(existsSync(join(managedDir(), "web", "index.html"))).toBe(true);
@@ -146,18 +153,18 @@ describe("install", () => {
   test("rejects an archive whose checksum does not match and installs nothing", async () => {
     useTempHome();
     const archive = buildArchive();
-    const baseUrl = serveRelease(archive, "0".repeat(64));
+    const release = serveRelease(archive, "0".repeat(64));
 
-    await expect(install({ baseUrl })).rejects.toThrow(/checksum/i);
+    await expect(install(release)).rejects.toThrow(/checksum/i);
     expect(existsSync(managedDir())).toBe(false);
   });
 
   test("reports a failed download instead of installing a partial server", async () => {
     useTempHome();
     const archive = buildArchive();
-    const baseUrl = serveRelease({ name: "some-other-asset.zip", bytes: archive.bytes }, sha256(archive.bytes));
+    const release = serveRelease({ name: "some-other-asset.zip", bytes: archive.bytes }, sha256(archive.bytes));
 
-    await expect(install({ baseUrl })).rejects.toThrow(/does not publish crewly-server_/);
+    await expect(install(release)).rejects.toThrow(/does not publish crewly-server_/);
     expect(existsSync(managedDir())).toBe(false);
   });
 
@@ -166,12 +173,11 @@ describe("install", () => {
     mkdirSync(managedDir(), { recursive: true });
     writeFileSync(join(managedDir(), "stale-file"), "left over from an older release");
     const archive = buildArchive();
-    const baseUrl = serveRelease(archive, sha256(archive.bytes));
+    const release = serveRelease(archive, sha256(archive.bytes));
 
-    await install({ baseUrl });
+    await install(release);
 
     expect(existsSync(join(managedDir(), "stale-file"))).toBe(false);
     expect(existsSync(join(managedDir(), serverFile))).toBe(true);
   });
 });
-

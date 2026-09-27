@@ -12,6 +12,10 @@ import * as state from "./state.ts";
 import { dim, green } from "./ui.ts";
 import { CLI_VERSION } from "./version.ts";
 import { PROTOCOL_VERSION } from "./protocol/index.ts";
+import { createPublicKey, verify } from "node:crypto";
+import { decodeRawStd } from "./b64.ts";
+import { spkiFor } from "./identity.ts";
+import { secureHttpUrl } from "./urls.ts";
 
 export async function start(entrypoint: string): Promise<void> {
   const dir = await state.ensureDir();
@@ -112,7 +116,7 @@ export async function serve(): Promise<void> {
 }
 
 export function websocketUrl(baseUrl: string): string {
-  const url = new URL(baseUrl);
+  const url = secureHttpUrl(baseUrl);
   url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
   url.pathname = "/api/v1/agentd/connect";
   url.search = "";
@@ -124,11 +128,27 @@ export function signaturePayload(deviceId: string, timestamp: string, nonce: str
   return new TextEncoder().encode(`${deviceId}\n${timestamp}\n${nonce}`);
 }
 
+export function serverSignaturePayload(nonce: string): Uint8Array {
+  return new TextEncoder().encode(`crewly-agentd-server\n${nonce}`);
+}
+
+export function verifyServerChallenge(publicKey: string, nonce: string, signature: string): boolean {
+  try {
+    const raw = decodeRawStd(publicKey);
+    if (raw.length !== 32) return false;
+    const key = createPublicKey({ key: spkiFor(raw), format: 'der', type: 'spki' });
+    return verify(null, Buffer.from(serverSignaturePayload(nonce)), key, Buffer.from(decodeRawStd(signature)));
+  } catch {
+    return false;
+  }
+}
+
 async function connectOnce(
   config: state.Config,
   deviceIdentity: identity.Identity,
   onSocket: (socket: WebSocket) => void,
 ): Promise<void> {
+  if (!config.serverPublicKey) throw new Error("server identity is not pinned; run 'crewly connect' again");
   await new Promise<void>((resolve, reject) => {
     const socket = new WebSocket(websocketUrl(config.serverUrl));
     onSocket(socket);
@@ -150,6 +170,10 @@ async function connectOnce(
       try { message = JSON.parse(String(event.data)) as Record<string, unknown>; }
       catch { socket.close(4002, "invalid server message"); return; }
       if (message.type === "challenge" && typeof message.nonce === "string") {
+        if (typeof message.serverSignature !== 'string' || !verifyServerChallenge(config.serverPublicKey!, message.nonce, message.serverSignature)) {
+          socket.close(4001, 'server authentication failed');
+          return;
+        }
         const timestamp = new Date().toISOString();
         socket.send(JSON.stringify({
           type: "authenticate",

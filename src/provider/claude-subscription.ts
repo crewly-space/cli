@@ -22,7 +22,10 @@ export class ClaudeSubscription implements Adapter {
     if (!this.executable) throw new Error("Claude Code is not installed");
     if (request.messages.length === 0) throw new Error("at least one message is required");
 
-    const args = ["--print", "--output-format", "stream-json", "--verbose"];
+    // This adapter is a model provider, not a remote-control channel. Claude
+    // receives no tools here, so a server-supplied prompt cannot read files or
+    // execute commands on the device behind the user's permission settings.
+    const args = ["--print", "--output-format", "stream-json", "--verbose", "--tools", ""];
     if (request.model) args.push("--model", request.model);
     if (request.system) args.push("--system-prompt", request.system);
     args.push(formatPrompt(request.messages));

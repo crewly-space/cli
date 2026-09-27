@@ -1,9 +1,10 @@
-import { createHash } from "node:crypto";
+import { createHash, createPublicKey, verify } from "node:crypto";
 import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, rename, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { isWindows } from "./paths.ts";
 import * as state from "./state.ts";
+import { secureHttpUrl } from "./urls.ts";
 
 const REPOSITORY = "crewly-space/server";
 
@@ -71,7 +72,26 @@ function tarBinary(): string {
 }
 
 async function extract(archive: string, into: string): Promise<void> {
-  const child = Bun.spawn([tarBinary(), "-xf", archive, "-C", into], { stdout: "ignore", stderr: "pipe" });
+  const names = Bun.spawn([tarBinary(), "-tf", archive], { stdout: "pipe", stderr: "pipe" });
+  const [listing, listError, listCode] = await Promise.all([
+    new Response(names.stdout).text(), new Response(names.stderr).text(), names.exited,
+  ]);
+  if (listCode !== 0) throw new Error(`could not inspect ${archive}: ${listError.trim()}`);
+  for (const raw of listing.split(/\r?\n/).filter(Boolean)) {
+    const entry = raw.replaceAll('\\', '/').replace(/^\.\//, '');
+    if (entry.startsWith('/') || /^[A-Za-z]:\//.test(entry) || entry.split('/').includes('..')) {
+      throw new Error(`release archive contains an unsafe path: ${raw}`);
+    }
+  }
+  const details = Bun.spawn([tarBinary(), "-tvf", archive], { stdout: "pipe", stderr: "pipe" });
+  const [verbose, detailError, detailCode] = await Promise.all([
+    new Response(details.stdout).text(), new Response(details.stderr).text(), details.exited,
+  ]);
+  if (detailCode !== 0) throw new Error(`could not inspect ${archive}: ${detailError.trim()}`);
+  if (verbose.split(/\r?\n/).some((line) => /^[lh]/.test(line))) {
+    throw new Error('release archive contains links, which are not allowed');
+  }
+  const child = Bun.spawn([tarBinary(), "-xf", archive, "-C", into, "--no-same-owner", "--no-same-permissions"], { stdout: "ignore", stderr: "pipe" });
   const [stderr, code] = await Promise.all([new Response(child.stderr).text(), child.exited]);
   if (code !== 0) throw new Error(`could not unpack ${archive}: ${stderr.trim()}`);
 }
@@ -85,15 +105,30 @@ async function extract(archive: string, into: string): Promise<void> {
  * The checksum guards against a corrupt or truncated download; it lives in the
  * same release as the archive, so it does not authenticate the publisher.
  */
-export async function install(options: { baseUrl?: string } = {}): Promise<void> {
+export async function install(options: { baseUrl?: string; publicKey?: string } = {}): Promise<void> {
   const asset = assetName();
   const baseUrl = (options.baseUrl ?? releaseUrl()).replace(/\/+$/, "");
+  secureHttpUrl(baseUrl, 'release URL');
+  const trustedKey = options.publicKey ?? process.env.CREWLY_RELEASE_PUBLIC_KEY;
+  if (!trustedKey) throw new Error('CREWLY_RELEASE_PUBLIC_KEY is required to authenticate server releases');
   const target = managedDir();
   const root = await state.ensureDir();
   const scratch = await mkdtemp(join(root, ".server-download-"));
   try {
     const bytes = await download(`${baseUrl}/${asset}`, asset);
     const listing = new TextDecoder().decode(await download(`${baseUrl}/checksums.txt`, "checksums.txt"));
+    const manifestSignature = await download(`${baseUrl}/checksums.txt.sig`, 'checksums.txt.sig');
+    let publisherKey;
+    try {
+      const raw = Buffer.from(trustedKey, 'base64');
+      if (raw.length !== 32) throw new Error('wrong key length');
+      publisherKey = createPublicKey({ key: Buffer.concat([Buffer.from('302a300506032b6570032100', 'hex'), raw]), format: 'der', type: 'spki' });
+    } catch {
+      throw new Error('CREWLY_RELEASE_PUBLIC_KEY must be a base64 Ed25519 public key');
+    }
+    if (!verify(null, Buffer.from(listing, 'utf8'), publisherKey, manifestSignature)) {
+      throw new Error('release manifest signature did not match the trusted publisher key');
+    }
     const actual = createHash("sha256").update(bytes).digest("hex");
     if (actual !== expectedChecksum(listing, asset)) {
       throw new Error(`checksum for ${asset} did not match; refusing to install it`);

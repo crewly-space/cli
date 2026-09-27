@@ -15,6 +15,7 @@ import { close as closeStdin, readLine } from "./tty.ts";
 import { bold, brand, clearScreen, cyan, dim, green, heading, mark, masthead, nextCommand, red, row, stateMark, yellow, type RuntimeState } from "./ui.ts";
 import { CLI_VERSION } from "./version.ts";
 import * as workspace from "./workspace-command.ts";
+import { secureHttpUrl } from "./urls.ts";
 
 const VERSION = CLI_VERSION;
 
@@ -147,20 +148,13 @@ async function connect(args: string[]): Promise<void> {
   if (args.length > 1) throw new Error("usage: crewly connect [server-url]");
   const config = await state.load();
   if (args[0]) config.serverUrl = args[0].replace(/\/+$/, "");
-  let parsed: URL;
-  try {
-    parsed = new URL(config.serverUrl);
-  } catch {
-    throw new Error("server URL must be a valid http or https address");
-  }
-  if (!['http:', 'https:'].includes(parsed.protocol)) {
-    throw new Error("server URL must be a valid http or https address");
-  }
+  secureHttpUrl(config.serverUrl);
   const deviceIdentity = await identity.loadOrCreate(await state.ensureDir());
   config.version = 2;
   if (config.installMode === "unconfigured") config.installMode = "connect";
   config.deviceId = deviceIdentity.deviceId;
   config.paired = false;
+  config.serverPublicKey = undefined;
   await state.save(config);
   if (!(await pairDevice(config, deviceIdentity))) return;
   // A daemon left over from a previous pairing keeps talking to the old server:
