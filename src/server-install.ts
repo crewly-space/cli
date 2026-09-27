@@ -8,6 +8,14 @@ import { secureHttpUrl } from "./urls.ts";
 
 const REPOSITORY = "crewly-space/server";
 
+/**
+ * The base64 raw Ed25519 public key that signs server releases' checksums.txt.
+ * Its private half is the RELEASE_SIGNING_KEY secret of crewly-space/server.
+ * CREWLY_RELEASE_PUBLIC_KEY overrides it, for mirrors signed with another key.
+ * Rotating it means a CLI release. See AGENTS.md.
+ */
+export const RELEASE_PUBLIC_KEY = "LEZFVrHlBk2PyBZ2bm7A5y9pVJ4BGXgCno2wpfp70lg=";
+
 export const SERVER_BINARY = isWindows ? "crewly-server.exe" : "crewly-server";
 
 /**
@@ -109,7 +117,7 @@ export async function install(options: { baseUrl?: string; publicKey?: string } 
   const asset = assetName();
   const baseUrl = (options.baseUrl ?? releaseUrl()).replace(/\/+$/, "");
   secureHttpUrl(baseUrl, 'release URL');
-  const trustedKey = options.publicKey ?? process.env.CREWLY_RELEASE_PUBLIC_KEY;
+  const trustedKey = options.publicKey ?? (process.env.CREWLY_RELEASE_PUBLIC_KEY?.trim() || RELEASE_PUBLIC_KEY);
   if (!trustedKey) throw new Error('CREWLY_RELEASE_PUBLIC_KEY is required to authenticate server releases');
   const target = managedDir();
   const root = await state.ensureDir();
