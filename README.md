@@ -12,6 +12,22 @@ src/
   daemon.ts supervisor.ts pairing.ts workspace.ts ...
 ```
 
+## Guided setup
+
+`crewly init` walks through the same steps as the web app's setup, in the
+same words: run a server (or connect this device to one), create the owner
+or sign in as one, choose how agents get models -- **Crewly Gateway** through
+your Crewly account (it links the server for you), a provider's **API key**,
+or a **subscription on this device** -- then a default model, and it checks
+that the model actually answers before finishing. The default model becomes
+the first agent's, Assistant, when the server has no agents yet.
+
+Unattended: `crewly init --yes --email you@example.com --provider openai
+--model gpt-4o-mini` with `CREWLY_ADMIN_PASSWORD` and
+`CREWLY_PROVIDER_API_KEY` set. `--provider` takes `crewly-gateway`,
+`anthropic`, `openai`, `openrouter`, `deepseek`, `openai-compatible` (with
+`--base-url`), `claude-subscription`, `ollama` or `later`.
+
 ## Develop
 
 Requires Bun 1.4+.

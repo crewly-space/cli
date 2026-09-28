@@ -8,7 +8,8 @@ import * as localProvider from "./provider/commands.ts";
 import * as server from "./server.ts";
 import * as service from "./service/index.ts";
 import * as state from "./state.ts";
-import { select } from "./select.ts";
+import { confirm, select } from "./select.ts";
+import { addGateway, ensureFirstAgent, explain, gatewayStatus, linkForGateway, listModels, serverApi, verifyModel, type GatewayStatus, type ServerApi } from "./model-setup.ts";
 import { readLine, readLineDefault, readSecret } from "./tty.ts";
 import { green, heading, nextCommand, yellow } from "./ui.ts";
 import { secureHttpUrl } from "./urls.ts";
@@ -28,6 +29,7 @@ interface Options {
   provider?: string;
   apiKey?: string;
   baseUrl?: string;
+  model?: string;
 }
 
 const REMOTE_PROVIDERS = ["anthropic", "openai", "openrouter", "deepseek", "openai-compatible"] as const;
@@ -56,7 +58,7 @@ export async function init(args: string[], entrypoint = import.meta.path): Promi
   await server.start(config);
 
   const token = await ensureOwner(config.serverUrl, dataDir, options);
-  if (token) await configureProvider(config, token, options);
+  if (token) await setUpModels(config, token, options);
 
   const deviceIdentity = await identity.loadOrCreate(await state.ensureDir());
   const alreadyPaired = config.paired && Boolean(config.serverPublicKey) && config.deviceId === deviceIdentity.deviceId;
@@ -105,6 +107,11 @@ async function configureConnection(config: state.Config, options: Options, entry
     waitForApproval: !options.yes,
   });
   if (paired) await startDaemon(entrypoint);
+  // Joining a server that has no model yet is the moment to give it one.
+  if (!options.yes && await confirm("\nSet up this server's AI models now? You sign in as its owner or an admin.", false)) {
+    const token = await signIn(config.serverUrl, options);
+    if (token) await setUpModels(config, token, options);
+  }
 }
 
 async function startDaemon(entrypoint: string): Promise<void> {
@@ -125,7 +132,9 @@ async function ensureOwner(baseUrl: string, dataDir: string, options: Options): 
   const status = await request(baseUrl, "/api/v1/auth/status") as { initialized: boolean; claimRequired?: boolean };
   if (status.initialized) {
     console.log(`${green("✓")} Owner account already exists`);
-    return null;
+    // Models are set up as that owner; unattended, only with credentials given.
+    if (options.yes) return options.email && process.env.CREWLY_ADMIN_PASSWORD ? signIn(baseUrl, options) : null;
+    return await confirm("Sign in as the owner or an admin to set up AI models now?", true) ? signIn(baseUrl, options) : null;
   }
   if (options.yes && (!options.email || !process.env.CREWLY_ADMIN_PASSWORD)) {
     console.log(`${yellow("!")} Create the first owner in the app, or set CREWLY_ADMIN_PASSWORD with --email for unattended setup.`);
@@ -152,17 +161,110 @@ async function ensureOwner(baseUrl: string, dataDir: string, options: Options): 
   return result.token;
 }
 
-async function configureProvider(config: state.Config, token: string, options: Options): Promise<void> {
-  const baseUrl = config.serverUrl;
-  let kind = options.provider;
-  if (!kind && options.yes) kind = "later";
-  if (!kind) kind = await chooseProvider();
-  if (kind === "later") {
-    console.log(`${yellow("!")} Model provider skipped; add one from the app when ready.`);
+/** Signs in to an existing server as an owner or admin; null when that does not happen. */
+async function signIn(baseUrl: string, options: Options): Promise<string | null> {
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const email = options.email ?? await readLine("Email: ");
+    let password = process.env.CREWLY_ADMIN_PASSWORD;
+    if (!password) {
+      process.stdout.write("Password: ");
+      password = await readSecret();
+      console.log();
+    }
+    const response = await fetch(`${baseUrl.replace(/\/+$/, "")}/api/v1/auth/login`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ email, password }),
+      signal: AbortSignal.timeout(30_000),
+    });
+    if (response.ok) {
+      const body = await response.json() as { token: string; user: { role: string } };
+      if (body.user.role !== "owner" && body.user.role !== "admin") {
+        console.log(`${yellow("!")} Only an owner or admin can set up models; skipping.`);
+        return null;
+      }
+      console.log(`${green("✓")} Signed in as ${email}`);
+      return body.token;
+    }
+    console.log(`${yellow("!")} ${response.status === 401 ? "That email and password did not match." : `Sign-in failed (HTTP ${response.status}).`}`);
+    // Given credentials that fail will fail again; only a person can retry.
+    if (options.yes || process.env.CREWLY_ADMIN_PASSWORD || options.email) return null;
+  }
+  return null;
+}
+
+/**
+ * Model access, a default model and proof that it answers -- in that order,
+ * and in the web app's words: Crewly Gateway, an API key, or a subscription
+ * on this device. The default model becomes the first agent's, which is where
+ * a default lives on a Crewly server.
+ */
+async function setUpModels(config: state.Config, token: string, options: Options): Promise<void> {
+  heading("AI models");
+  const api = serverApi(config.serverUrl, token);
+  const existing = await api("/api/v1/providers");
+  const providers = existing.status === 200 && Array.isArray(existing.body)
+    ? existing.body as unknown as Array<{ id: string; kind: string }>
+    : [];
+  let providerId: string | null = null;
+  if (providers.length && !options.provider) {
+    const picked = options.yes ? providers[0]!.id : await select("\nWhich provider should the default model come from?", [
+      ...providers.map((provider) => ({ value: provider.id, label: provider.id, hint: `already connected · ${provider.kind}` })),
+      { value: "", label: "Connect another provider" },
+    ]);
+    providerId = picked || null;
+  }
+  providerId ??= await configureProvider(config, api, options);
+  if (!providerId) return;
+
+  let model = await chooseModel(api, providerId, options);
+  while (model) {
+    console.log(`Checking that ${model} answers…`);
+    const verified = await verifyModel(api, providerId, model);
+    if (verified.ok) {
+      console.log(`${green("✓")} ${model} answered in ${(verified.latencyMs / 1000).toFixed(1)}s`);
+      break;
+    }
+    console.log(`${yellow("!")} ${verified.message}`);
+    if (options.yes) break;
+    const next = await select("What now?", [
+      { value: "other", label: "Choose another model" },
+      { value: "keep", label: `Keep ${model} anyway`, hint: "fix it later in the app" },
+    ]);
+    if (next === "keep") break;
+    model = await chooseModel(api, providerId, { ...options, model: undefined });
+  }
+  if (!model) {
+    console.log(`${yellow("!")} No default model chosen; pick one when you create an agent in the app.`);
     return;
   }
-  if (kind === "crewly" || kind === "account") {
-    throw new Error(`${kind === "crewly" ? "Crewly model access" : "Crewly account linking"} is not available until the hosted gateway is deployed`);
+  await ensureFirstAgent(api, providerId, model, { log: (line) => console.log(line) });
+}
+
+/** Connects the chosen kind of model access; the provider id, or null when skipped or not possible yet. */
+async function configureProvider(config: state.Config, api: ServerApi, options: Options): Promise<string | null> {
+  let kind = options.provider === "crewly" ? "crewly-gateway" : options.provider;
+  const gateway = await gatewayStatus(api).catch(() => null);
+  if (!kind && options.yes) kind = "later";
+  if (!kind) kind = await chooseProvider(gateway);
+  if (kind === "later") {
+    console.log(`${yellow("!")} Model provider skipped; add one in the app under Settings → AI providers.`);
+    return null;
+  }
+  if (kind === "crewly-gateway") {
+    if (!gateway) throw new Error("This server does not offer Crewly Gateway yet; update it, or use an API key");
+    const status = gateway.state === "ready" ? gateway : await linkForGateway(api, `Crewly on ${hostname()}`, {
+      openUrl: (url) => server.openUrl(url),
+      sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+      log: (line) => console.log(line),
+    }, { noOpen: options.noOpen });
+    if (status?.state !== "ready") {
+      console.log(`${yellow("!")} ${status?.message ?? "Crewly Gateway is not available."}`);
+      return null;
+    }
+    await addGateway(api);
+    console.log(`${green("✓")} Crewly Gateway connected · ${status.models.length} models`);
+    return "crewly-gateway";
   }
   if (kind === "claude-subscription" || kind === "ollama") {
     if (kind === "claude-subscription" && !localProvider.claudeSubscriptionAvailable()) {
@@ -181,13 +283,11 @@ async function configureProvider(config: state.Config, token: string, options: O
       }));
       await state.save(config);
     }
-    await request(baseUrl, "/api/v1/providers", {
-      method: "POST",
-      headers: { authorization: `Bearer ${token}` },
-      body: JSON.stringify({ id: `${kind}-local`, kind }),
-    });
-    console.log(`${green("✓")} ${kind === "claude-subscription" ? "Claude Subscription" : "Ollama"} connected through this device`);
-    return;
+    const id = `${kind}-local`;
+    const created = await api("/api/v1/providers", { method: "POST", body: { id, kind } });
+    if (created.status !== 201 && created.body.error !== "provider_exists") throw new Error(explain(created, "Connecting the provider"));
+    console.log(`${green("✓")} ${kind === "claude-subscription" ? "Claude subscription" : "Ollama"} connected through this device`);
+    return id;
   }
   if (!REMOTE_PROVIDERS.includes(kind as (typeof REMOTE_PROVIDERS)[number])) {
     throw new Error(`unsupported provider "${kind}"`);
@@ -198,36 +298,62 @@ async function configureProvider(config: state.Config, token: string, options: O
     baseUrlValue = await readLineDefault("API base URL", "http://127.0.0.1:8080/v1");
   }
   const apiKey = options.apiKey ?? process.env.CREWLY_PROVIDER_API_KEY ?? await promptApiKey();
-  await request(baseUrl, "/api/v1/providers", {
-    method: "POST",
-    headers: { authorization: `Bearer ${token}` },
-    body: JSON.stringify({
-      id: `${kind}-default`,
-      kind,
-      apiKey,
-      ...(baseUrlValue ? { baseUrl: baseUrlValue.replace(/\/+$/, "") } : {}),
-    }),
-  });
-  console.log(`${green("✓")} ${kind} provider connected`);
+  const id = `${kind}-default`;
+  const created = await api("/api/v1/providers", { method: "POST", body: {
+    id, kind, apiKey, ...(baseUrlValue ? { baseUrl: baseUrlValue.replace(/\/+$/, "") } : {}),
+  } });
+  if (created.status === 409 && created.body.error === "provider_exists") {
+    console.log(`${green("✓")} ${kind} is already connected as ${id}; keeping its key`);
+    return id;
+  }
+  if (created.status !== 201) throw new Error(explain(created, "Connecting the provider"));
+  console.log(`${green("✓")} ${kind} connected`);
+  return id;
 }
 
-async function chooseProvider(): Promise<string> {
+/** The web app's three ways, Crewly Gateway first. */
+async function chooseProvider(gateway: GatewayStatus | null): Promise<string> {
   const available = [] as Array<{ value: string; label: string; hint?: string }>;
-  if (localProvider.claudeSubscriptionAvailable()) {
-    available.push({ value: "claude-subscription", label: "Claude Subscription", hint: "signed in on this device" });
-  }
-  if (await localProvider.ollamaAvailable()) {
-    available.push({ value: "ollama", label: "Ollama", hint: "running on this device" });
+  if (gateway) {
+    available.push({ value: "crewly-gateway", label: "Crewly Gateway", hint: gateway.state === "ready"
+      ? `models through your Crewly account · ${gateway.models.length} ready`
+      : "models through your Crewly account · links this server to it" });
   }
   available.push(
     { value: "anthropic", label: "Anthropic", hint: "API key" },
     { value: "openai", label: "OpenAI", hint: "API key" },
     { value: "openrouter", label: "OpenRouter", hint: "API key" },
     { value: "deepseek", label: "DeepSeek", hint: "API key" },
-    { value: "openai-compatible", label: "OpenAI-compatible", hint: "API key + URL" },
-    { value: "later", label: "Configure later", hint: "add a provider in the app" },
+    { value: "openai-compatible", label: "Custom endpoint", hint: "OpenAI-compatible URL + API key" },
   );
-  return await select("\nHow should agents access AI models?", available, available.length - 1);
+  if (localProvider.claudeSubscriptionAvailable()) {
+    available.push({ value: "claude-subscription", label: "Claude subscription", hint: "signed in on this device" });
+  }
+  if (await localProvider.ollamaAvailable()) {
+    available.push({ value: "ollama", label: "Ollama", hint: "running on this device" });
+  }
+  available.push({ value: "later", label: "Later", hint: "add one in the app" });
+  return await select("\nHow should agents get their AI models?", available, 0);
+}
+
+/** A default model from what the provider lists, or typed when it lists none. */
+async function chooseModel(api: ServerApi, providerId: string, options: Options): Promise<string | null> {
+  if (options.model) return options.model;
+  const { models, error } = await listModels(api, providerId);
+  if (error) console.log(`${yellow("!")} ${error}`);
+  if (options.yes) return models[0]?.id ?? null;
+  if (!models.length) {
+    const typed = (await readLine("Model ID (leave empty to skip): ")).trim();
+    return typed || null;
+  }
+  const shown = models.slice(0, 20);
+  const picked = await select("\nDefault model for your agents", [
+    ...shown.map((model) => ({ value: model.id, label: model.displayName, hint: model.displayName === model.id ? undefined : model.id })),
+    { value: "", label: models.length > shown.length ? `Another model (${models.length - shown.length} more)` : "Another model", hint: "type its ID" },
+  ]);
+  if (picked) return picked;
+  const typed = (await readLine("Model ID: ")).trim();
+  return typed || null;
 }
 
 async function promptPassword(): Promise<string> {
@@ -287,6 +413,7 @@ function parseOptions(args: string[]): Options {
       case "--provider": result.provider = value; break;
       case "--api-key": result.apiKey = value; break;
       case "--base-url": result.baseUrl = value; break;
+      case "--model": result.model = value; break;
       default: throw new Error(`unknown init option "${rawName}"`);
     }
   }
