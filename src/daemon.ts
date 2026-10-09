@@ -200,8 +200,12 @@ async function connectOnce(
       }
       if (authenticated && typeof message.requestId === "string" && typeof message.operation === "string") {
         void state.load().then((latest) => handleDeviceRequest(message, latest)).then((response) => {
+          if (!response.ok) {
+            console.error(`${new Date().toISOString()} ${message.operation} ${message.requestId} failed: ${response.error.code}: ${response.error.message}`);
+          }
           if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify(response));
         }).catch((error) => {
+          console.error(`${new Date().toISOString()} ${message.operation} ${message.requestId} failed: ${error instanceof Error ? error.message : String(error)}`);
           if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify({
             requestId: message.requestId,
             ok: false,
