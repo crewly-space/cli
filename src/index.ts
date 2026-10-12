@@ -365,7 +365,7 @@ function help(): void {
 
   heading("Agents and tools");
   console.log(cmd("provider <action>", "add, list, test"));
-  console.log(cmd("workspace <action>", "add [path], list"));
+  console.log(cmd("workspace <action>", "add [path] [name], list, rename, remove"));
   console.log(cmd("agentd <action>", "install, status"));
   console.log(cmd("runtime <action>", "list, install [claude-code | codex]"));
 

@@ -5,6 +5,7 @@ import * as detect from "./detect.ts";
 import * as stateStore from "./state.ts";
 import type * as state from "./state.ts";
 import { deviceCapabilities } from "./capabilities.ts";
+import * as workspace from "./workspace.ts";
 
 /**
  * What the device checks before it enables a provider. Injected so tests do
@@ -47,6 +48,9 @@ class DeviceOperationError extends Error {
 async function dispatch(request: AgentdRequest, config: state.Config, checks: DeviceChecks): Promise<Record<string, unknown>> {
   const kind = typeof request.payload.kind === "string" ? request.payload.kind : "";
   if (request.operation === "provider.enable") return enableProvider(kind, config, checks);
+  if (request.operation === "workspace.add" || request.operation === "workspace.update" || request.operation === "workspace.remove") {
+    return changeWorkspace(request, config, checks);
+  }
   const provider = config.providers.find((candidate) => candidate.kind === kind && candidate.localOnly);
   if ((request.operation === "provider.chat" || request.operation === "provider.models") && !provider) {
     throw new DeviceOperationError("provider_unavailable", `${kind || "requested"} provider is not enabled on this device`);
@@ -100,6 +104,33 @@ async function enableProvider(kind: string, config: state.Config, checks: Device
     await checks.save(config);
   }
   return { enabled: true, capabilities: checks.capabilities(config) };
+}
+
+/*
+ * Adds, renames or removes a workspace because the device's owner asked from
+ * the app. The device decides: paths are resolved here, must be existing
+ * directories, and never the whole disk or home folder -- those can only be
+ * shared by somebody sitting at this device, with `crewly workspace add`.
+ */
+async function changeWorkspace(request: AgentdRequest, config: state.Config, checks: DeviceChecks): Promise<Record<string, unknown>> {
+  const text = (key: string) => typeof request.payload[key] === "string" ? request.payload[key] as string : "";
+  let entry: state.Workspace;
+  try {
+    if (request.operation === "workspace.add") entry = workspace.add(config, text("path"), text("name"));
+    else if (request.operation === "workspace.update") entry = workspace.rename(config, text("workspaceId"), text("name"));
+    else entry = workspace.remove(config, text("workspaceId"));
+  } catch (error) {
+    throw new DeviceOperationError("workspace_invalid", sentence(error instanceof Error ? error.message : String(error)));
+  }
+  await checks.save(config);
+  return {
+    workspace: request.operation === "workspace.remove" ? null : { id: entry.id, name: entry.name },
+    capabilities: checks.capabilities(config),
+  };
+}
+
+function sentence(message: string): string {
+  return message.charAt(0).toUpperCase() + message.slice(1);
 }
 
 async function chatWithClaude(request: ReturnType<typeof ChatRequestSchema.parse>): Promise<ChatResponse> {

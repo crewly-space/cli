@@ -56,3 +56,45 @@ test("lists Ollama models and completes a chat through the local endpoint", asyn
     server.stop(true);
   }
 });
+
+test("adds, renames and removes a workspace for the owner, and reports what it now shares", async () => {
+  const { mkdtempSync, realpathSync, rmSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const folder = realpathSync(mkdtempSync(join(tmpdir(), "crewly-ws-op-")));
+  const local = { providers: [], workspaces: [] } as unknown as Config;
+  let saved = 0;
+  const checks = {
+    claude: () => ({ installed: false, authenticated: false }),
+    ollamaAvailable: async () => false,
+    save: async () => { saved += 1; },
+    capabilities: (current: Config) => ({ workspaces: current.workspaces.map(({ id, name }) => ({ id, name })) }),
+  };
+  try {
+    const added = await handleDeviceRequest({ requestId: "a", operation: "workspace.add", payload: { path: folder, name: "Site" } }, local, checks);
+    expect(added.ok).toBe(true);
+    const id = local.workspaces[0]!.id;
+    expect(added).toMatchObject({ result: { workspace: { id, name: "Site" }, capabilities: { workspaces: [{ id, name: "Site" }] } } });
+
+    const again = await handleDeviceRequest({ requestId: "b", operation: "workspace.add", payload: { path: folder } }, local, checks);
+    expect(again).toMatchObject({ ok: false, error: { code: "workspace_invalid" } });
+
+    const renamed = await handleDeviceRequest({ requestId: "c", operation: "workspace.update", payload: { workspaceId: id, name: "Website" } }, local, checks);
+    expect(renamed).toMatchObject({ ok: true, result: { workspace: { id, name: "Website" } } });
+
+    const removed = await handleDeviceRequest({ requestId: "d", operation: "workspace.remove", payload: { workspaceId: id } }, local, checks);
+    expect(removed).toMatchObject({ ok: true, result: { workspace: null, capabilities: { workspaces: [] } } });
+    expect(saved).toBe(3);
+  } finally {
+    rmSync(folder, { recursive: true, force: true });
+  }
+});
+
+test("refuses to share the whole disk or home folder from afar", async () => {
+  const local = { providers: [], workspaces: [] } as unknown as Config;
+  for (const path of ["/", "~"]) {
+    const response = await handleDeviceRequest({ requestId: "r", operation: "workspace.add", payload: { path } }, local);
+    expect(response).toMatchObject({ ok: false, error: { code: "workspace_invalid", message: "Pick a project folder, not the whole disk or home folder" } });
+  }
+  expect(local.workspaces).toHaveLength(0);
+});
