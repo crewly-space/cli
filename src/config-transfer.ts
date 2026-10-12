@@ -19,7 +19,7 @@ export async function restore(args: string[]): Promise<void> {
   const [source] = args;
   if (args.length !== 1 || !source) throw new Error("usage: crewly restore <file>");
   const config = JSON.parse(await readFile(source, "utf8")) as state.Config;
-  if (config.version !== 1) throw new Error("unsupported backup version");
+  if (config.version !== 1 && config.version !== 2) throw new Error("unsupported backup version");
   await state.save(config);
   console.log(`${green("✓")} Configuration restored. ${dim("Run 'crewly doctor' to verify this device.")}`);
 }
