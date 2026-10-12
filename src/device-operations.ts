@@ -109,16 +109,17 @@ async function enableProvider(kind: string, config: state.Config, checks: Device
 /*
  * Adds, renames or removes a workspace because the device's owner asked from
  * the app. The device decides: paths are resolved here, must be existing
- * directories, and never the whole disk or home folder -- those can only be
- * shared by somebody sitting at this device, with `crewly workspace add`.
+ * directories inside the home folder that are not hidden or settings folders
+ * -- anything else can only be shared by somebody sitting at this device,
+ * with `crewly workspace add`. Workspaces are named by id only.
  */
 async function changeWorkspace(request: AgentdRequest, config: state.Config, checks: DeviceChecks): Promise<Record<string, unknown>> {
   const text = (key: string) => typeof request.payload[key] === "string" ? request.payload[key] as string : "";
   let entry: state.Workspace;
   try {
-    if (request.operation === "workspace.add") entry = workspace.add(config, text("path"), text("name"));
-    else if (request.operation === "workspace.update") entry = workspace.rename(config, text("workspaceId"), text("name"));
-    else entry = workspace.remove(config, text("workspaceId"));
+    if (request.operation === "workspace.add") entry = workspace.add(config, text("path"), text("name"), { fromAfar: true });
+    else if (request.operation === "workspace.update") entry = workspace.rename(config, text("workspaceId"), text("name"), { idOnly: true });
+    else entry = workspace.remove(config, text("workspaceId"), { idOnly: true });
   } catch (error) {
     throw new DeviceOperationError("workspace_invalid", sentence(error instanceof Error ? error.message : String(error)));
   }

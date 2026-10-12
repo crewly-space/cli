@@ -14,15 +14,16 @@ export async function command(args: string[]): Promise<void> {
         return;
       }
       for (const entry of config.workspaces) {
-        console.log(`  ${green("•")} ${entry.name.padEnd(20)} ${dim(entry.path)}`);
+        // Names may have been set from the app: print nothing that drives the terminal.
+        console.log(`  ${green("•")} ${workspace.cleanName(entry.name).padEnd(20)} ${dim(workspace.cleanName(entry.path))}`);
         console.log(`  ${dim("read allow · write ask · shell ask · git push deny")}`);
       }
       return;
     case "add": {
       const path = rest[0] ?? (await readLine("Workspace path: "));
-      const entry = workspace.add(config, path, rest.slice(1).join(" "), { allowBroad: true });
+      const entry = workspace.add(config, path, rest.slice(1).join(" "));
       await state.save(config);
-      console.log(`${green("✓")} Added ${entry.name} ${dim(entry.path)}`);
+      console.log(`${green("✓")} Added ${entry.name} ${dim(workspace.cleanName(entry.path))}`);
       console.log(`  ${dim("read allow · write ask · shell ask · git push deny")}`);
       return;
     }
@@ -31,7 +32,7 @@ export async function command(args: string[]): Promise<void> {
       if (!ref || name.length === 0) throw new Error("usage: crewly workspace rename <name|path> <new name>");
       const entry = workspace.rename(config, ref, name.join(" "));
       await state.save(config);
-      console.log(`${green("✓")} Renamed to ${entry.name} ${dim(entry.path)}`);
+      console.log(`${green("✓")} Renamed to ${entry.name} ${dim(workspace.cleanName(entry.path))}`);
       return;
     }
     case "remove":
@@ -39,7 +40,7 @@ export async function command(args: string[]): Promise<void> {
       if (!rest[0]) throw new Error("usage: crewly workspace remove <name|path>");
       const entry = workspace.remove(config, rest[0]);
       await state.save(config);
-      console.log(`${green("✓")} Removed ${entry.name} ${dim("— the folder itself was not touched")}`);
+      console.log(`${green("✓")} Removed ${workspace.cleanName(entry.name)} ${dim("— the folder itself was not touched")}`);
       return;
     }
     default:

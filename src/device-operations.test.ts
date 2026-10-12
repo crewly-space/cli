@@ -57,44 +57,69 @@ test("lists Ollama models and completes a chat through the local endpoint", asyn
   }
 });
 
-test("adds, renames and removes a workspace for the owner, and reports what it now shares", async () => {
+async function withHome(run: (home: string) => Promise<void>) {
   const { mkdtempSync, realpathSync, rmSync } = await import("node:fs");
   const { tmpdir } = await import("node:os");
   const { join } = await import("node:path");
-  const folder = realpathSync(mkdtempSync(join(tmpdir(), "crewly-ws-op-")));
+  const home = realpathSync(mkdtempSync(join(tmpdir(), "crewly-home-")));
+  const saved = { HOME: process.env.HOME, CREWLY_HOME: process.env.CREWLY_HOME };
+  process.env.HOME = home;
+  process.env.CREWLY_HOME = join(home, "Library", "crewly");
+  try { await run(home); } finally {
+    process.env.HOME = saved.HOME;
+    if (saved.CREWLY_HOME === undefined) delete process.env.CREWLY_HOME; else process.env.CREWLY_HOME = saved.CREWLY_HOME;
+    rmSync(home, { recursive: true, force: true });
+  }
+}
+
+const quietChecks = (onSave: () => void = () => {}) => ({
+  claude: () => ({ installed: false, authenticated: false }),
+  ollamaAvailable: async () => false,
+  save: async () => { onSave(); },
+  capabilities: (current: Config) => ({ workspaces: current.workspaces.map(({ id, name }) => ({ id, name })) }),
+});
+
+test("adds, renames and removes a workspace for the owner, and reports what it now shares", () => withHome(async (home) => {
+  const { mkdirSync } = await import("node:fs");
+  const { join } = await import("node:path");
+  const folder = join(home, "code", "site");
+  mkdirSync(folder, { recursive: true });
   const local = { providers: [], workspaces: [] } as unknown as Config;
   let saved = 0;
-  const checks = {
-    claude: () => ({ installed: false, authenticated: false }),
-    ollamaAvailable: async () => false,
-    save: async () => { saved += 1; },
-    capabilities: (current: Config) => ({ workspaces: current.workspaces.map(({ id, name }) => ({ id, name })) }),
-  };
-  try {
-    const added = await handleDeviceRequest({ requestId: "a", operation: "workspace.add", payload: { path: folder, name: "Site" } }, local, checks);
-    expect(added.ok).toBe(true);
-    const id = local.workspaces[0]!.id;
-    expect(added).toMatchObject({ result: { workspace: { id, name: "Site" }, capabilities: { workspaces: [{ id, name: "Site" }] } } });
+  const checks = quietChecks(() => { saved += 1; });
 
-    const again = await handleDeviceRequest({ requestId: "b", operation: "workspace.add", payload: { path: folder } }, local, checks);
-    expect(again).toMatchObject({ ok: false, error: { code: "workspace_invalid" } });
+  const added = await handleDeviceRequest({ requestId: "a", operation: "workspace.add", payload: { path: "~/code/site", name: "Site" } }, local, checks);
+  expect(added.ok).toBe(true);
+  const id = local.workspaces[0]!.id;
+  expect(local.workspaces[0]!.path).toBe(folder);
+  expect(added).toMatchObject({ result: { workspace: { id, name: "Site" }, capabilities: { workspaces: [{ id, name: "Site" }] } } });
 
-    const renamed = await handleDeviceRequest({ requestId: "c", operation: "workspace.update", payload: { workspaceId: id, name: "Website" } }, local, checks);
-    expect(renamed).toMatchObject({ ok: true, result: { workspace: { id, name: "Website" } } });
+  const again = await handleDeviceRequest({ requestId: "b", operation: "workspace.add", payload: { path: folder } }, local, checks);
+  expect(again).toMatchObject({ ok: false, error: { code: "workspace_invalid" } });
 
-    const removed = await handleDeviceRequest({ requestId: "d", operation: "workspace.remove", payload: { workspaceId: id } }, local, checks);
-    expect(removed).toMatchObject({ ok: true, result: { workspace: null, capabilities: { workspaces: [] } } });
-    expect(saved).toBe(3);
-  } finally {
-    rmSync(folder, { recursive: true, force: true });
+  // Named by id only: a name or a path from afar finds nothing.
+  for (const ref of ["Site", folder]) {
+    const byOther = await handleDeviceRequest({ requestId: "n", operation: "workspace.remove", payload: { workspaceId: ref } }, local, checks);
+    expect(byOther).toMatchObject({ ok: false, error: { code: "workspace_invalid" } });
   }
-});
 
-test("refuses to share the whole disk or home folder from afar", async () => {
+  const renamed = await handleDeviceRequest({ requestId: "c", operation: "workspace.update", payload: { workspaceId: id, name: "\u001b]0;pwned\u0007Web\u202Esite" } }, local, checks);
+  expect(renamed).toMatchObject({ ok: true, result: { workspace: { id, name: "]0;pwnedWebsite" } } });
+
+  const removed = await handleDeviceRequest({ requestId: "d", operation: "workspace.remove", payload: { workspaceId: id } }, local, checks);
+  expect(removed).toMatchObject({ ok: true, result: { workspace: null, capabilities: { workspaces: [] } } });
+  expect(saved).toBe(3);
+}));
+
+test("shares only project folders inside the home folder from afar", () => withHome(async (home) => {
+  const { mkdirSync } = await import("node:fs");
+  const { dirname, join } = await import("node:path");
+  for (const sub of [".ssh", "code/.git", "Library/crewly", "Library/Keychains"]) mkdirSync(join(home, sub), { recursive: true });
   const local = { providers: [], workspaces: [] } as unknown as Config;
-  for (const path of ["/", "~"]) {
-    const response = await handleDeviceRequest({ requestId: "r", operation: "workspace.add", payload: { path } }, local);
-    expect(response).toMatchObject({ ok: false, error: { code: "workspace_invalid", message: "Pick a project folder, not the whole disk or home folder" } });
+  const refused = ["/", "/etc", dirname(home), "~", home.toUpperCase(), "~/.ssh", "~/code/.git", "~/library/keychains", "~/Library/crewly", "~/Library"];
+  for (const path of refused) {
+    const response = await handleDeviceRequest({ requestId: "r", operation: "workspace.add", payload: { path } }, local, quietChecks());
+    expect(response.ok, path).toBe(false);
   }
   expect(local.workspaces).toHaveLength(0);
-});
+}));
