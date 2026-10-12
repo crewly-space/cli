@@ -123,3 +123,19 @@ test("shares only project folders inside the home folder from afar", () => withH
   }
   expect(local.workspaces).toHaveLength(0);
 }));
+
+test("does not mistake a differently-cased sibling for the home folder where case matters", () => withHome(async (home) => {
+  if (process.platform === "darwin" || process.platform === "win32") return;
+  const { mkdirSync, rmSync } = await import("node:fs");
+  const { join } = await import("node:path");
+  const twin = home.replace(/[a-z](?=[^/]*$)/, (letter) => letter.toUpperCase());
+  if (twin === home) return;
+  mkdirSync(join(twin, "code"), { recursive: true });
+  try {
+    const local = { providers: [], workspaces: [] } as unknown as Config;
+    const response = await handleDeviceRequest({ requestId: "t", operation: "workspace.add", payload: { path: join(twin, "code") } }, local, quietChecks());
+    expect(response.ok).toBe(false);
+  } finally {
+    rmSync(twin, { recursive: true, force: true });
+  }
+}));

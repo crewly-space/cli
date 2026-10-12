@@ -53,9 +53,16 @@ export function expandHome(path: string): string {
   return path;
 }
 
-/** Whether `inner` is `outer` or inside it, ignoring case as workspace ids do. */
+/*
+ * Case is folded only where the file system ignores it. On Linux /home/Me
+ * and /home/me are different folders -- folding there would let one pass
+ * for being inside the other.
+ */
+const fold = (path: string) => process.platform === "darwin" || process.platform === "win32" ? path.toLowerCase() : path;
+
+/** Whether `inner` is `outer` or inside it. */
 function within(inner: string, outer: string): boolean {
-  const rel = relative(outer.toLowerCase(), inner.toLowerCase());
+  const rel = relative(fold(outer), fold(inner));
   return rel === "" || (rel !== ".." && !rel.startsWith(`..${sep}`) && !isAbsolute(rel));
 }
 
@@ -70,9 +77,9 @@ function assertShareableFromAfar(path: string): void {
   const root = canonical(home());
   const refuse = () => { throw new Error("pick a project folder inside your home folder, not a system, hidden or settings folder"); };
   if (!within(path, root) || within(root, path)) refuse();
-  const segments = relative(root.toLowerCase(), path.toLowerCase()).split(sep);
+  const segments = relative(fold(root), fold(path)).split(sep);
   if (segments.some((segment) => segment.startsWith("."))) refuse();
-  if (["library", "appdata"].includes(segments[0]!)) refuse();
+  if (["library", "appdata"].includes(segments[0]!.toLowerCase())) refuse();
   let crewly = resolve(stateDir());
   try { crewly = canonical(crewly); } catch { /* not created yet: compare as written */ }
   if (within(path, crewly) || within(crewly, path)) refuse();
